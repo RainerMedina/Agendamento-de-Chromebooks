@@ -85,13 +85,12 @@ with tab_nova:
         elif horario_fim <= horario_inicio:
             st.error("O horário de término deve ser posterior ao horário de início.")
         else:
-            # Gera um ID único baseado na data/hora do cadastro
             id_unico = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
             
             nova_reserva = {
                 "id": id_unico,
                 "professor": nome_professor,
-                "email": email_professor,
+                "email": email_professor.strip().lower(),
                 "unidade": unidade,
                 "data": str(data_reserva),
                 "inicio": horario_inicio.strftime("%H:%M"),
@@ -138,7 +137,7 @@ with tab_consultar:
                 titulo_card = f"📍 {r['unidade']} | {data_formatada} ({r['inicio']} às {r['fim']}) - Prof. {r['professor']}"
                 
                 with st.expander(titulo_card):
-                    st.write(f"**Professor(a):** {r['professor']} ({r['email']})")
+                    st.write(f"**Professor(a):** {r['professor']}")
                     st.write(f"**Bloco / Local:** {r['unidade']}")
                     st.write(f"**Data:** {data_formatada}")
                     st.write(f"**Horário:** {r['inicio']} às {r['fim']}")
@@ -147,9 +146,23 @@ with tab_consultar:
                         st.write(f"**Observações:** {r['obs']}")
                     
                     st.divider()
-                    # Botão para excluir/cancelar o agendamento
+                    st.subheader("🔒 Cancelar Agendamento")
+                    
                     reserva_id = r.get("id", str(idx))
-                    if st.button("❌ Cancelar este agendamento", key=f"btn_del_{reserva_id}"):
-                        cancelar_reserva(reserva_id)
-                        st.success("Reserva cancelada com sucesso!")
-                        st.rerun()
+                    email_dono = str(r.get("email", "")).strip().lower()
+                    
+                    # Campo para validação do e-mail do autor
+                    email_confirmacao = st.text_input(
+                        "Digite seu e-mail cadastrado para autorizar o cancelamento:",
+                        key=f"input_email_{reserva_id}"
+                    )
+                    
+                    if st.button("❌ Confirmar Cancelamento", key=f"btn_del_{reserva_id}"):
+                        if not email_confirmacao:
+                            st.error("Digite o e-mail cadastrado na reserva para poder cancelar.")
+                        elif email_confirmacao.strip().lower() != email_dono:
+                            st.error("E-mail incorreto! Apenas a pessoa que criou esta reserva pode cancelá-la.")
+                        else:
+                            cancelar_reserva(reserva_id)
+                            st.success("Reserva cancelada com sucesso!")
+                            st.rerun()
