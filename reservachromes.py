@@ -1,5 +1,10 @@
 import streamlit as st
 import datetime
+import pandas as pd
+import os
+
+# Arquivo para gravar os agendamentos no servidor
+ARQUIVO_RESERVAS = "reservas_chromebooks.csv"
 
 # ==========================================
 # 1. CONFIGURAÇÃO DA PÁGINA
@@ -14,11 +19,23 @@ st.title("💻 Agendamento de Chromebooks - GDV")
 st.markdown("Reserve os blocos de Chromebooks para suas aulas e consulte as reservas realizadas.")
 
 # ==========================================
-# 2. BANCO DE DADOS EM MEMÓRIA (COMPARTILHADO)
+# 2. FUNÇÕES DE BANCO DE DADOS (CSV)
 # ==========================================
-# Inicializa a lista de reservas no estado global do Streamlit
-if "reservas" not in st.session_state:
-    st.session_state.reservas = []
+def carregar_reservas():
+    if os.path.exists(ARQUIVO_RESERVAS):
+        try:
+            df = pd.read_csv(ARQUIVO_RESERVAS, dtype=str)
+            return df
+        except Exception:
+            return pd.DataFrame(columns=["professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
+    else:
+        return pd.DataFrame(columns=["professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
+
+def salvar_reserva(nova_reserva):
+    df = carregar_reservas()
+    novo_df = pd.DataFrame([nova_reserva])
+    df = pd.concat([df, novo_df], ignore_index=True)
+    df.to_csv(ARQUIVO_RESERVAS, index=False)
 
 # ==========================================
 # 3. INTERFACE EM ABAS
@@ -62,45 +79,60 @@ with tab_nova:
         elif horario_fim <= horario_inicio:
             st.error("O horário de término deve ser posterior ao horário de início.")
         else:
-            # Salva o agendamento no sistema
             nova_reserva = {
                 "professor": nome_professor,
                 "email": email_professor,
                 "unidade": unidade,
-                "data": data_reserva,
+                "data": str(data_reserva),
                 "inicio": horario_inicio.strftime("%H:%M"),
                 "fim": horario_fim.strftime("%H:%M"),
-                "quantidade": quantidade,
-                "obs": observacoes
+                "quantidade": str(quantidade),
+                "obs": observacoes if observacoes else ""
             }
-            
-            st.session_state.reservas.append(nova_reserva)
-            st.success("✅ Agendamento realizado com sucesso! Todos já podem visualizar na aba 'Consultar Reservas'.")
+            salvar_reserva(nova_reserva)
+            st.success("✅ Agendamento realizado com sucesso! Vá para a aba 'Consultar Reservas' para visualizar.")
 
 # ------------------------------------------
-# ABA 2: CONSULTAR RESERVAS (VISÍVEL PARA TODOS)
+# ABA 2: CONSULTAR RESERVAS
 # ------------------------------------------
 with tab_consultar:
     st.header("Agendamentos Realizados")
     
-    if not st.session_state.reservas:
+    df_reservas = carregar_reservas()
+    
+    if df_reservas.empty:
         st.info("Nenhum agendamento realizado até o momento.")
     else:
-        # Filtro de data
-        data_filtro = st.date_input("Filtrar por data", value=datetime.date.today())
+        # Mostra opção para filtrar por data ou ver todas
+        ver_todas = st.checkbox("Mostrar todas as datas", value=False)
         
-        # Encontra agendamentos na data selecionada
-        reservas_encontradas = [r for r in st.session_state.reservas if r["data"] == data_filtro]
-        
-        if not reservas_encontradas:
-            st.warning(f"Nenhum agendamento encontrado para a data {data_filtro.strftime('%d/%m/%Y')}.")
+        if not ver_todas:
+            data_filtro = st.date_input("Filtrar por data", value=datetime.date.today())
+            data_filtro_str = str(data_filtro)
+            reservas_filtradas = df_reservas[df_reservas["data"] == data_filtro_str]
         else:
-            st.write(f"### Reservas para {data_filtro.strftime('%d/%m/%Y')}:")
-            for idx, r in enumerate(reservas_encontradas, start=1):
-                with st.expander(f"📍 {r['unidade']} | {r['inicio']} às {r['fim']} - Prof. {r['professor']}"):
+            reservas_filtradas = df_reservas
+
+        if reservas_filtradas.empty:
+            st.warning("Nenhum agendamento encontrado para a data selecionada.")
+        else:
+            st.write(f"**Total de agendamentos encontrados:** {len(reservas_filtradas)}")
+            
+            for idx, r in reservas_filtradas.iterrows():
+                data_formatada = r['data']
+                try:
+                    data_obj = datetime.datetime.strptime(r['data'], "%Y-%m-%d")
+                    data_formatada = data_obj.strftime("%d/%m/%Y")
+                except Exception:
+                    pass
+
+                titulo_card = f"📍 {r['unidade']} | {data_formatada} ({r['inicio']} às {r['fim']}) - Prof. {r['professor']}"
+                
+                with st.expander(titulo_card):
                     st.write(f"**Professor(a):** {r['professor']} ({r['email']})")
                     st.write(f"**Bloco / Local:** {r['unidade']}")
+                    st.write(f"**Data:** {data_formatada}")
                     st.write(f"**Horário:** {r['inicio']} às {r['fim']}")
                     st.write(f"**Quantidade de Chromebooks:** {r['quantidade']}")
-                    if r['obs']:
+                    if pd.notna(r['obs']) and str(r['obs']).strip():
                         st.write(f"**Observações:** {r['obs']}")
