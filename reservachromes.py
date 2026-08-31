@@ -27,15 +27,21 @@ def carregar_reservas():
             df = pd.read_csv(ARQUIVO_RESERVAS, dtype=str)
             return df
         except Exception:
-            return pd.DataFrame(columns=["professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
+            return pd.DataFrame(columns=["id", "professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
     else:
-        return pd.DataFrame(columns=["professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
+        return pd.DataFrame(columns=["id", "professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
 
 def salvar_reserva(nova_reserva):
     df = carregar_reservas()
     novo_df = pd.DataFrame([nova_reserva])
     df = pd.concat([df, novo_df], ignore_index=True)
     df.to_csv(ARQUIVO_RESERVAS, index=False)
+
+def cancelar_reserva(id_reserva):
+    df = carregar_reservas()
+    if not df.empty and "id" in df.columns:
+        df = df[df["id"] != str(id_reserva)]
+        df.to_csv(ARQUIVO_RESERVAS, index=False)
 
 # ==========================================
 # 3. INTERFACE EM ABAS
@@ -79,7 +85,11 @@ with tab_nova:
         elif horario_fim <= horario_inicio:
             st.error("O horário de término deve ser posterior ao horário de início.")
         else:
+            # Gera um ID único baseado na data/hora do cadastro
+            id_unico = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+            
             nova_reserva = {
+                "id": id_unico,
                 "professor": nome_professor,
                 "email": email_professor,
                 "unidade": unidade,
@@ -93,7 +103,7 @@ with tab_nova:
             st.success("✅ Agendamento realizado com sucesso! Vá para a aba 'Consultar Reservas' para visualizar.")
 
 # ------------------------------------------
-# ABA 2: CONSULTAR RESERVAS
+# ABA 2: CONSULTAR E CANCELAR RESERVAS
 # ------------------------------------------
 with tab_consultar:
     st.header("Agendamentos Realizados")
@@ -103,7 +113,6 @@ with tab_consultar:
     if df_reservas.empty:
         st.info("Nenhum agendamento realizado até o momento.")
     else:
-        # Mostra opção para filtrar por data ou ver todas
         ver_todas = st.checkbox("Mostrar todas as datas", value=False)
         
         if not ver_todas:
@@ -136,3 +145,11 @@ with tab_consultar:
                     st.write(f"**Quantidade de Chromebooks:** {r['quantidade']}")
                     if pd.notna(r['obs']) and str(r['obs']).strip():
                         st.write(f"**Observações:** {r['obs']}")
+                    
+                    st.divider()
+                    # Botão para excluir/cancelar o agendamento
+                    reserva_id = r.get("id", str(idx))
+                    if st.button("❌ Cancelar este agendamento", key=f"btn_del_{reserva_id}"):
+                        cancelar_reserva(reserva_id)
+                        st.success("Reserva cancelada com sucesso!")
+                        st.rerun()
