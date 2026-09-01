@@ -16,7 +16,6 @@ st.set_page_config(
 )
 
 # Ocultar APENAS o cabeçalho superior do Streamlit (ícone do GitHub / menu)
-# mantendo os cabeçalhos dos calendários visíveis
 ocultar_menu = """
     <style>
     [data-testid="stHeader"] {
@@ -33,7 +32,7 @@ st.title("💻 Agendamento de Chromebooks - GDV")
 st.markdown("Reserve os blocos de Chromebooks para suas aulas e consulte as reservas realizadas.")
 
 # ==========================================
-# 2. FUNÇÕES DE BANCO DE DADOS (CSV)
+# 2. FUNÇÕES DE BANCO DE DADOS E VALIDAÇÃO
 # ==========================================
 def carregar_reservas():
     if os.path.exists(ARQUIVO_RESERVAS):
@@ -56,6 +55,33 @@ def cancelar_reserva(id_reserva):
     if not df.empty and "id" in df.columns:
         df = df[df["id"] != str(id_reserva)]
         df.to_csv(ARQUIVO_RESERVAS, index=False)
+
+def verificar_conflito(unidade, data_str, inicio_time, fim_time):
+    """
+    Verifica se já existe alguma reserva na mesma unidade e data
+    cujo horário entre em conflito (sobreposição) com o novo pedido.
+    """
+    df = carregar_reservas()
+    if df.empty:
+        return False, ""
+
+    # Filtrar reservas na mesma unidade e data
+    mesma_unidade_data = df[(df["unidade"] == unidade) & (df["data"] == data_str)]
+
+    for _, r in mesma_unidade_data.iterrows():
+        try:
+            r_inicio = datetime.datetime.strptime(r["inicio"], "%H:%M").time()
+            r_fim = datetime.datetime.strptime(r["fim"], "%H:%M").time()
+
+            # Lógica de sobreposição de horários:
+            # Novo horário começa antes de terminar o existente E termina depois de começar o existente
+            if inicio_time < r_fim and fim_time > r_inicio:
+                detalhes = f"Prof(a). {r['professor']} ({r['inicio']} às {r['fim']})"
+                return True, detalhes
+        except Exception:
+            continue
+
+    return False, ""
 
 # ==========================================
 # 3. INTERFACE EM ABAS
@@ -94,10 +120,15 @@ with tab_nova:
         btn_reservar = st.form_submit_button("Confirmar Agendamento", use_container_width=True)
 
     if btn_reservar:
+        data_str = str(data_reserva)
+        tem_conflito, conflito_info = verificar_conflito(unidade, data_str, horario_inicio, horario_fim)
+
         if not nome_professor or not email_professor:
             st.error("Por favor, preencha o Nome e o E-mail.")
         elif horario_fim <= horario_inicio:
             st.error("O horário de término deve ser posterior ao horário de início.")
+        elif tem_conflito:
+            st.error(f"⚠️ Conflito de Agendamento! A unidade **{unidade}** já possui uma reserva que se sobrepõe a esse horário:\n\n**{conflito_info}**")
         else:
             id_unico = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
             
@@ -106,7 +137,7 @@ with tab_nova:
                 "professor": nome_professor,
                 "email": email_professor.strip().lower(),
                 "unidade": unidade,
-                "data": str(data_reserva),
+                "data": data_str,
                 "inicio": horario_inicio.strftime("%H:%M"),
                 "fim": horario_fim.strftime("%H:%M"),
                 "quantidade": str(quantidade),
