@@ -15,12 +15,16 @@ st.set_page_config(
     layout="centered"
 )
 
-# Ocultar o menu do Streamlit, ícones do GitHub e rodapé
+# Ocultar APENAS o cabeçalho superior do Streamlit (ícone do GitHub / menu)
+# mantendo os cabeçalhos dos calendários visíveis
 ocultar_menu = """
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    [data-testid="stHeader"] {
+        display: none;
+    }
+    footer {
+        visibility: hidden;
+    }
     </style>
 """
 st.markdown(ocultar_menu, unsafe_allow_html=True)
