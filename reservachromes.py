@@ -15,6 +15,16 @@ st.set_page_config(
     layout="centered"
 )
 
+# Ocultar o menu do Streamlit, ícones do GitHub e rodapé
+ocultar_menu = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(ocultar_menu, unsafe_allow_html=True)
+
 st.title("💻 Agendamento de Chromebooks - GDV")
 st.markdown("Reserve os blocos de Chromebooks para suas aulas e consulte as reservas realizadas.")
 
@@ -151,7 +161,6 @@ with tab_consultar:
                     reserva_id = r.get("id", str(idx))
                     email_dono = str(r.get("email", "")).strip().lower()
                     
-                    # Campo para validação do e-mail do autor
                     email_confirmacao = st.text_input(
                         "Digite seu e-mail cadastrado para autorizar o cancelamento:",
                         key=f"input_email_{reserva_id}"
