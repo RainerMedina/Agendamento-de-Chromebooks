@@ -1,10 +1,7 @@
 import streamlit as st
 import datetime
 import pandas as pd
-import os
-
-# Arquivo para gravar os agendamentos no servidor
-ARQUIVO_RESERVAS = "reservas_chromebooks.csv"
+from streamlit_gsheets import GSheetsConnection
 
 # ==========================================
 # 1. CONFIGURAÇÃO DA PÁGINA
@@ -15,7 +12,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# Ocultar APENAS o cabeçalho superior do Streamlit (ícone do GitHub / menu)
+# Ocultar o cabeçalho superior do Streamlit
 ocultar_menu = """
     <style>
     [data-testid="stHeader"] {
@@ -31,41 +28,39 @@ st.markdown(ocultar_menu, unsafe_allow_html=True)
 st.title("💻 Agendamento de Chromebooks - GDV")
 st.markdown("Reserve os blocos de Chromebooks para suas aulas e consulte as reservas realizadas.")
 
+# Conexão segura com o Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
+
 # ==========================================
-# 2. FUNÇÕES DE BANCO DE DADOS E VALIDAÇÃO
+# 2. FUNÇÕES COM GOOGLE SHEETS
 # ==========================================
 def carregar_reservas():
-    if os.path.exists(ARQUIVO_RESERVAS):
-        try:
-            df = pd.read_csv(ARQUIVO_RESERVAS, dtype=str)
-            return df
-        except Exception:
+    try:
+        # Lê os dados da planilha em tempo real
+        df = conn.read(ttl="0s")
+        if df is None or df.empty:
             return pd.DataFrame(columns=["id", "professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
-    else:
+        return df.astype(str)
+    except Exception:
         return pd.DataFrame(columns=["id", "professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
 
 def salvar_reserva(nova_reserva):
     df = carregar_reservas()
     novo_df = pd.DataFrame([nova_reserva])
-    df = pd.concat([df, novo_df], ignore_index=True)
-    df.to_csv(ARQUIVO_RESERVAS, index=False)
+    df_atualizado = pd.concat([df, novo_df], ignore_index=True)
+    conn.update(data=df_atualizado)
 
 def cancelar_reserva(id_reserva):
     df = carregar_reservas()
     if not df.empty and "id" in df.columns:
-        df = df[df["id"] != str(id_reserva)]
-        df.to_csv(ARQUIVO_RESERVAS, index=False)
+        df_atualizado = df[df["id"] != str(id_reserva)]
+        conn.update(data=df_atualizado)
 
 def verificar_conflito(unidade, data_str, inicio_time, fim_time):
-    """
-    Verifica se já existe alguma reserva na mesma unidade e data
-    cujo horário entre em conflito (sobreposição) com o novo pedido.
-    """
     df = carregar_reservas()
     if df.empty:
         return False, ""
 
-    # Filtrar reservas na mesma unidade e data
     mesma_unidade_data = df[(df["unidade"] == unidade) & (df["data"] == data_str)]
 
     for _, r in mesma_unidade_data.iterrows():
@@ -73,8 +68,6 @@ def verificar_conflito(unidade, data_str, inicio_time, fim_time):
             r_inicio = datetime.datetime.strptime(r["inicio"], "%H:%M").time()
             r_fim = datetime.datetime.strptime(r["fim"], "%H:%M").time()
 
-            # Lógica de sobreposição de horários:
-            # Novo horário começa antes de terminar o existente E termina depois de começar o existente
             if inicio_time < r_fim and fim_time > r_inicio:
                 detalhes = f"Prof(a). {r['professor']} ({r['inicio']} às {r['fim']})"
                 return True, detalhes
@@ -144,7 +137,7 @@ with tab_nova:
                 "obs": observacoes if observacoes else ""
             }
             salvar_reserva(nova_reserva)
-            st.success("✅ Agendamento realizado com sucesso! Vá para a aba 'Consultar Reservas' para visualizar.")
+            st.success("✅ Agendamento realizado e salvo no Google Sheets com sucesso!")
 
 # ------------------------------------------
 # ABA 2: CONSULTAR E CANCELAR RESERVAS
