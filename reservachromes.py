@@ -52,13 +52,14 @@ def salvar_reserva(nova_reserva):
 col_logo, col_titulo = st.columns([1, 4])
 
 with col_logo:
-    # Se você tiver a imagem salva no repositório GitHub como 'logo_gdv.png', use:
-    # st.image("logo_gdv.png", width=180)
-    # Caso prefira carregar direto via URL, você pode colocar a URL da imagem abaixo:
-    st.image("https://raw.githubusercontent.com/streamlit/streamlit/main/docs/static/logo.png", width=160)
+    # Carrega o arquivo Logo.png enviado ao GitHub
+    try:
+        st.image("Logo.png", width=160)
+    except:
+        st.write("🏫 **Colégio GDV**")
 
 with col_titulo:
-    st.title("🏫 Portal de Reservas - GDV")
+    st.title("Portal de Reservas - GDV")
     st.caption("Gerenciamento integrado de Chromebooks e Auditório para professores e colaboradores.")
 
 aba_chromebook, aba_auditorio, aba_minhas_reservas = st.tabs([
@@ -100,7 +101,7 @@ with aba_chromebook:
         if not prof_chrome or not email_chrome:
             st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail).")
         else:
-            # Gera ID seguro com formato de texto (Evita notação científica no Sheets)
+            # ID no formato texto para não virar notação científica no Sheets
             id_reserva = f"CHR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
             
             dados = {
@@ -131,7 +132,7 @@ with aba_auditorio:
             prof_aud = st.text_input("Nome do Solicitante / Responsável*", key="a_prof")
             email_aud = st.text_input("E-mail institucional*", key="a_email")
             
-            # Local fixado único para o Auditório GDV
+            # Local fixado e unificado como 'Auditório GDV'
             unidade_aud = st.text_input("Local*", value="Auditório GDV", disabled=True, key="a_unidade")
             
             data_aud = st.date_input("Data do Evento / Aula*", min_value=date.today(), key="a_data")
@@ -145,7 +146,7 @@ with aba_auditorio:
         with col2:
             st.markdown("##### 🛠️ Equipamentos Necessários")
             
-            # Opções atualizadas (removida a opção Projetor + Lousa Digital)
+            # Opções sem 'Projetor + Lousa Digital'
             recurso_visuo = st.radio("Apresentação Visual:", [
                 "Nenhum",
                 "Projetor / DataShow",
@@ -168,10 +169,8 @@ with aba_auditorio:
         if not prof_aud or not email_aud:
             st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail).")
         else:
-            # Gera ID seguro para o Auditório
             id_reserva_aud = f"AUD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
             
-            # Formata os equipamentos escolhidos para salvar na coluna 'obs'
             detalhes_equipamentos = f"[AUDITÓRIO] Visual: {recurso_visuo} | Mics: {qtd_mic} | Som: {sistema_som}"
             obs_final = f"{detalhes_equipamentos} | Obs: {obs_aud}" if obs_aud else detalhes_equipamentos
             
@@ -183,7 +182,7 @@ with aba_auditorio:
                 "data": str(data_aud),
                 "inicio": inicio_aud.strftime("%H:%M"),
                 "fim": fim_aud.strftime("%H:%M"),
-                "quantidade": 1,  # Valor padrão para contagem do espaço
+                "quantidade": 1,
                 "obs": obs_final
             }
             
@@ -205,7 +204,6 @@ with aba_minhas_reservas:
         if df_reservas.empty:
             st.info("Nenhuma reserva registrada no momento.")
         else:
-            # Força a exibição da coluna 'id' como texto puro no painel
             df_reservas['id'] = df_reservas['id'].astype(str)
             
             st.dataframe(
