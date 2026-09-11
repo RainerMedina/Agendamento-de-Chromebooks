@@ -47,10 +47,19 @@ def salvar_reserva(nova_reserva):
         return False
 
 # =========================================================
-# 3. CABEÇALHO E NAVEGAÇÃO POR ABAS
+# 3. CABEÇALHO COM LOGO E NAVEGAÇÃO POR ABAS
 # =========================================================
-st.title("🏫 Portal de Reservas - GDV")
-st.caption("Gerenciamento integrado de Chromebooks e Auditório para professores e colaboradores.")
+col_logo, col_titulo = st.columns([1, 4])
+
+with col_logo:
+    # Se você tiver a imagem salva no repositório GitHub como 'logo_gdv.png', use:
+    # st.image("logo_gdv.png", width=180)
+    # Caso prefira carregar direto via URL, você pode colocar a URL da imagem abaixo:
+    st.image("https://raw.githubusercontent.com/streamlit/streamlit/main/docs/static/logo.png", width=160)
+
+with col_titulo:
+    st.title("🏫 Portal de Reservas - GDV")
+    st.caption("Gerenciamento integrado de Chromebooks e Auditório para professores e colaboradores.")
 
 aba_chromebook, aba_auditorio, aba_minhas_reservas = st.tabs([
     "💻 Reservar Chromebooks", 
@@ -85,7 +94,7 @@ with aba_chromebook:
             
         obs_chrome = st.text_area("Observações / Solicitações especiais", key="c_obs")
         
-        submit_chrome = st.form_submit_button(" Confirmar Reserva de Chromebooks")
+        submit_chrome = st.form_submit_button("Confirmar Reserva de Chromebooks")
         
     if submit_chrome:
         if not prof_chrome or not email_chrome:
@@ -113,7 +122,7 @@ with aba_chromebook:
 # ABA 2: RESERVA DE AUDITÓRIO
 # =========================================================
 with aba_auditorio:
-    st.subheader("🎭 Agendamento do Auditório e Recursos Audiovisuais")
+    st.subheader("🎭 Agendamento do Auditório GDV")
     
     with st.form("form_auditorio"):
         col1, col2 = st.columns(2)
@@ -121,10 +130,10 @@ with aba_auditorio:
         with col1:
             prof_aud = st.text_input("Nome do Solicitante / Responsável*", key="a_prof")
             email_aud = st.text_input("E-mail institucional*", key="a_email")
-            unidade_aud = st.selectbox("Unidade do Auditório*", [
-                "Auditório Principal - Bloco 2", 
-                "Auditório Infantil - Play"
-            ], key="a_unidade")
+            
+            # Local fixado único para o Auditório GDV
+            unidade_aud = st.text_input("Local*", value="Auditório GDV", disabled=True, key="a_unidade")
+            
             data_aud = st.date_input("Data do Evento / Aula*", min_value=date.today(), key="a_data")
             
             col_ah1, col_ah2 = st.columns(2)
@@ -136,11 +145,11 @@ with aba_auditorio:
         with col2:
             st.markdown("##### 🛠️ Equipamentos Necessários")
             
+            # Opções atualizadas (removida a opção Projetor + Lousa Digital)
             recurso_visuo = st.radio("Apresentação Visual:", [
                 "Nenhum",
                 "Projetor / DataShow",
-                "Lousa Digital / Interativa",
-                "Projetor + Lousa Digital"
+                "Lousa Digital / Interativa"
             ], key="a_visuo")
             
             qtd_mic = st.slider("Quantidade de Microfones sem fio:", min_value=0, max_value=4, value=1, key="a_mic")
@@ -153,7 +162,7 @@ with aba_auditorio:
 
         obs_aud = st.text_area("Descrição do Evento / Observações adicionais para a TI", key="a_obs")
         
-        submit_aud = st.form_submit_button(" Confirmar Reserva do Auditório")
+        submit_aud = st.form_submit_button("Confirmar Reserva do Auditório")
 
     if submit_aud:
         if not prof_aud or not email_aud:
@@ -170,7 +179,7 @@ with aba_auditorio:
                 "id": str(id_reserva_aud),
                 "professor": prof_aud,
                 "email": email_aud,
-                "unidade": unidade_aud,
+                "unidade": "Auditório GDV",
                 "data": str(data_aud),
                 "inicio": inicio_aud.strftime("%H:%M"),
                 "fim": fim_aud.strftime("%H:%M"),
