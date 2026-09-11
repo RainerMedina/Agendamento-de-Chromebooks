@@ -1,205 +1,207 @@
 import streamlit as st
-import datetime
+from datetime import datetime, date
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 
-# ==========================================
+# =========================================================
 # 1. CONFIGURAÇÃO DA PÁGINA
-# ==========================================
+# =========================================================
 st.set_page_config(
-    page_title="Agendamento de Chromebooks - GDV",
-    page_icon="💻",
-    layout="centered"
+    page_title="Portal de Reservas - GDV",
+    page_icon="🏫",
+    layout="wide"
 )
 
-# Ocultar o cabeçalho superior do Streamlit
+# Ocultar o menu superior padrão do Streamlit
 ocultar_menu = """
-    <style>
-    [data-testid="stHeader"] {
-        display: none;
-    }
-    footer {
-        visibility: hidden;
-    }
-    </style>
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+</style>
 """
 st.markdown(ocultar_menu, unsafe_allow_html=True)
 
-st.title("💻 Agendamento de Chromebooks - GDV")
-st.markdown("Reserve os blocos de Chromebooks para suas aulas e consulte as reservas realizadas.")
-
-# Conexão segura com o Google Sheets
+# Conexão com Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# ==========================================
-# 2. FUNÇÕES COM GOOGLE SHEETS
-# ==========================================
-def carregar_reservas():
-    try:
-        # Lê os dados da planilha em tempo real
-        df = conn.read(ttl="0s")
-        if df is None or df.empty:
-            return pd.DataFrame(columns=["id", "professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
-        return df.astype(str)
-    except Exception:
-        return pd.DataFrame(columns=["id", "professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"])
-
+# =========================================================
+# 2. FUNÇÃO PARA SALVAR RESERVAS NA PLANILHA
+# =========================================================
 def salvar_reserva(nova_reserva):
-    df = carregar_reservas()
-    novo_df = pd.DataFrame([nova_reserva])
-    df_atualizado = pd.concat([df, novo_df], ignore_index=True)
-    conn.update(data=df_atualizado)
-
-def cancelar_reserva(id_reserva):
-    df = carregar_reservas()
-    if not df.empty and "id" in df.columns:
-        df_atualizado = df[df["id"] != str(id_reserva)]
-        conn.update(data=df_atualizado)
-
-def verificar_conflito(unidade, data_str, inicio_time, fim_time):
-    df = carregar_reservas()
-    if df.empty:
-        return False, ""
-
-    mesma_unidade_data = df[(df["unidade"] == unidade) & (df["data"] == data_str)]
-
-    for _, r in mesma_unidade_data.iterrows():
-        try:
-            r_inicio = datetime.datetime.strptime(r["inicio"], "%H:%M").time()
-            r_fim = datetime.datetime.strptime(r["fim"], "%H:%M").time()
-
-            if inicio_time < r_fim and fim_time > r_inicio:
-                detalhes = f"Prof(a). {r['professor']} ({r['inicio']} às {r['fim']})"
-                return True, detalhes
-        except Exception:
-            continue
-
-    return False, ""
-
-# ==========================================
-# 3. INTERFACE EM ABAS
-# ==========================================
-tab_nova, tab_consultar = st.tabs(["➕ Nova Reserva", "📅 Consultar Reservas"])
-
-# ------------------------------------------
-# ABA 1: NOVA RESERVA
-# ------------------------------------------
-with tab_nova:
-    st.header("Formulário de Reserva")
-    
-    with st.form("form_reserva", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            nome_professor = st.text_input("Nome do Professor(a)*")
-        with col2:
-            email_professor = st.text_input("E-mail do Professor(a)*")
-
-        unidade = st.selectbox(
-            "Selecione a Unidade / Bloco*",
-            ["Bloco 2", "Bloco 3", "Bloco 7", "Unidade Play"]
-        )
-
-        col3, col4, col5 = st.columns(3)
-        with col3:
-            data_reserva = st.date_input("Data da Reserva*", min_value=datetime.date.today())
-        with col4:
-            horario_inicio = st.time_input("Horário de Início*", value=datetime.time(8, 0))
-        with col5:
-            horario_fim = st.time_input("Horário de Término*", value=datetime.time(8, 50))
-
-        quantidade = st.number_input("Quantidade de Chromebooks*", min_value=1, max_value=50, value=30)
-        observacoes = st.text_area("Observações (Opcional)")
-
-        btn_reservar = st.form_submit_button("Confirmar Agendamento", use_container_width=True)
-
-    if btn_reservar:
-        data_str = str(data_reserva)
-        tem_conflito, conflito_info = verificar_conflito(unidade, data_str, horario_inicio, horario_fim)
-
-        if not nome_professor or not email_professor:
-            st.error("Por favor, preencha o Nome e o E-mail.")
-        elif horario_fim <= horario_inicio:
-            st.error("O horário de término deve ser posterior ao horário de início.")
-        elif tem_conflito:
-            st.error(f"⚠️ Conflito de Agendamento! A unidade **{unidade}** já possui uma reserva que se sobrepõe a esse horário:\n\n**{conflito_info}**")
-        else:
-            id_unico = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-            
-            nova_reserva = {
-                "id": id_unico,
-                "professor": nome_professor,
-                "email": email_professor.strip().lower(),
-                "unidade": unidade,
-                "data": data_str,
-                "inicio": horario_inicio.strftime("%H:%M"),
-                "fim": horario_fim.strftime("%H:%M"),
-                "quantidade": str(quantidade),
-                "obs": observacoes if observacoes else ""
-            }
-            salvar_reserva(nova_reserva)
-            st.success("✅ Agendamento realizado e salvo no Google Sheets com sucesso!")
-
-# ------------------------------------------
-# ABA 2: CONSULTAR E CANCELAR RESERVAS
-# ------------------------------------------
-with tab_consultar:
-    st.header("Agendamentos Realizados")
-    
-    df_reservas = carregar_reservas()
-    
-    if df_reservas.empty:
-        st.info("Nenhum agendamento realizado até o momento.")
-    else:
-        ver_todas = st.checkbox("Mostrar todas as datas", value=False)
+    try:
+        # Lê os dados atuais da planilha
+        df_atual = conn.read(ttl=0)
         
-        if not ver_todas:
-            data_filtro = st.date_input("Filtrar por data", value=datetime.date.today())
-            data_filtro_str = str(data_filtro)
-            reservas_filtradas = df_reservas[df_reservas["data"] == data_filtro_str]
-        else:
-            reservas_filtradas = df_reservas
+        # Converte a nova reserva em DataFrame
+        df_novo = pd.DataFrame([nova_reserva])
+        
+        # Junta os dados antigos com os novos
+        df_final = pd.concat([df_atual, df_novo], ignore_index=True)
+        
+        # Atualiza no Google Sheets na aba Página1
+        conn.update(worksheet="Página1", data=df_final)
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar na planilha: {e}")
+        return False
 
-        if reservas_filtradas.empty:
-            st.warning("Nenhum agendamento encontrado para a data selecionada.")
-        else:
-            st.write(f"**Total de agendamentos encontrados:** {len(reservas_filtradas)}")
+# =========================================================
+# 3. CABEÇALHO E NAVEGAÇÃO POR ABAS
+# =========================================================
+st.title("🏫 Portal de Reservas - GDV")
+st.caption("Gerenciamento integrado de Chromebooks e Auditório para professores e colaboradores.")
+
+aba_chromebook, aba_auditorio, aba_minhas_reservas = st.tabs([
+    "💻 Reservar Chromebooks", 
+    "🎭 Reservar Auditório", 
+    "📋 Painel de Reservas"
+])
+
+# =========================================================
+# ABA 1: RESERVA DE CHROMEBOOKS
+# =========================================================
+with aba_chromebook:
+    st.subheader("💻 Agendamento de Carrinho de Chromebooks")
+    
+    with st.form("form_chromebook"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            prof_chrome = st.text_input("Nome do Professor / Solicitante*", key="c_prof")
+            email_chrome = st.text_input("E-mail institucional*", key="c_email")
+            unidade_chrome = st.selectbox("Unidade / Bloco*", [
+                "Unidade Play", "Bloco 2", "Bloco 3", "Bloco 7"
+            ], key="c_unidade")
             
-            for idx, r in reservas_filtradas.iterrows():
-                data_formatada = r['data']
-                try:
-                    data_obj = datetime.datetime.strptime(r['data'], "%Y-%m-%d")
-                    data_formatada = data_obj.strftime("%d/%m/%Y")
-                except Exception:
-                    pass
+        with col2:
+            data_chrome = st.date_input("Data do uso*", min_value=date.today(), key="c_data")
+            col_h1, col_h2 = st.columns(2)
+            with col_h1:
+                inicio_chrome = st.time_input("Horário Início*", key="c_inicio")
+            with col_h2:
+                fim_chrome = st.time_input("Horário Fim*", key="c_fim")
+            qtd_chrome = st.number_input("Quantidade de Chromebooks*", min_value=1, max_value=50, value=30, key="c_qtd")
+            
+        obs_chrome = st.text_area("Observações / Solicitações especiais", key="c_obs")
+        
+        submit_chrome = st.form_submit_button(" Confirmar Reserva de Chromebooks")
+        
+    if submit_chrome:
+        if not prof_chrome or not email_chrome:
+            st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail).")
+        else:
+            # Gera ID seguro com formato de texto (Evita notação científica no Sheets)
+            id_reserva = f"CHR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            
+            dados = {
+                "id": str(id_reserva),
+                "professor": prof_chrome,
+                "email": email_chrome,
+                "unidade": unidade_chrome,
+                "data": str(data_chrome),
+                "inicio": inicio_chrome.strftime("%H:%M"),
+                "fim": fim_chrome.strftime("%H:%M"),
+                "quantidade": int(qtd_chrome),
+                "obs": f"[CHROMEBOOK] {obs_chrome}" if obs_chrome else "[CHROMEBOOK]"
+            }
+            
+            if salvar_reserva(dados):
+                st.success(f"Reserva de Chromebooks realizada com sucesso! Código: **{id_reserva}**")
 
-                titulo_card = f"📍 {r['unidade']} | {data_formatada} ({r['inicio']} às {r['fim']}) - Prof. {r['professor']}"
-                
-                with st.expander(titulo_card):
-                    st.write(f"**Professor(a):** {r['professor']}")
-                    st.write(f"**Bloco / Local:** {r['unidade']}")
-                    st.write(f"**Data:** {data_formatada}")
-                    st.write(f"**Horário:** {r['inicio']} às {r['fim']}")
-                    st.write(f"**Quantidade de Chromebooks:** {r['quantidade']}")
-                    if pd.notna(r['obs']) and str(r['obs']).strip():
-                        st.write(f"**Observações:** {r['obs']}")
-                    
-                    st.divider()
-                    st.subheader("🔒 Cancelar Agendamento")
-                    
-                    reserva_id = r.get("id", str(idx))
-                    email_dono = str(r.get("email", "")).strip().lower()
-                    
-                    email_confirmacao = st.text_input(
-                        "Digite seu e-mail cadastrado para autorizar o cancelamento:",
-                        key=f"input_email_{reserva_id}"
-                    )
-                    
-                    if st.button("❌ Confirmar Cancelamento", key=f"btn_del_{reserva_id}"):
-                        if not email_confirmacao:
-                            st.error("Digite o e-mail cadastrado na reserva para poder cancelar.")
-                        elif email_confirmacao.strip().lower() != email_dono:
-                            st.error("E-mail incorreto! Apenas a pessoa que criou esta reserva pode cancelá-la.")
-                        else:
-                            cancelar_reserva(reserva_id)
-                            st.success("Reserva cancelada com sucesso!")
-                            st.rerun()
+# =========================================================
+# ABA 2: RESERVA DE AUDITÓRIO
+# =========================================================
+with aba_auditorio:
+    st.subheader("🎭 Agendamento do Auditório e Recursos Audiovisuais")
+    
+    with st.form("form_auditorio"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            prof_aud = st.text_input("Nome do Solicitante / Responsável*", key="a_prof")
+            email_aud = st.text_input("E-mail institucional*", key="a_email")
+            unidade_aud = st.selectbox("Unidade do Auditório*", [
+                "Auditório Principal - Bloco 2", 
+                "Auditório Infantil - Play"
+            ], key="a_unidade")
+            data_aud = st.date_input("Data do Evento / Aula*", min_value=date.today(), key="a_data")
+            
+            col_ah1, col_ah2 = st.columns(2)
+            with col_ah1:
+                inicio_aud = st.time_input("Horário Início*", key="a_inicio")
+            with col_ah2:
+                fim_aud = st.time_input("Horário Fim*", key="a_fim")
+
+        with col2:
+            st.markdown("##### 🛠️ Equipamentos Necessários")
+            
+            recurso_visuo = st.radio("Apresentação Visual:", [
+                "Nenhum",
+                "Projetor / DataShow",
+                "Lousa Digital / Interativa",
+                "Projetor + Lousa Digital"
+            ], key="a_visuo")
+            
+            qtd_mic = st.slider("Quantidade de Microfones sem fio:", min_value=0, max_value=4, value=1, key="a_mic")
+            
+            sistema_som = st.selectbox("Sistema de Som:", [
+                "Som Geral do Auditório (Mesa + Caixas Fixas)",
+                "Caixa de Som Portátil com Bluetooth",
+                "Sem necessidade de Som"
+            ], key="a_som")
+
+        obs_aud = st.text_area("Descrição do Evento / Observações adicionais para a TI", key="a_obs")
+        
+        submit_aud = st.form_submit_button(" Confirmar Reserva do Auditório")
+
+    if submit_aud:
+        if not prof_aud or not email_aud:
+            st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail).")
+        else:
+            # Gera ID seguro para o Auditório
+            id_reserva_aud = f"AUD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            
+            # Formata os equipamentos escolhidos para salvar na coluna 'obs'
+            detalhes_equipamentos = f"[AUDITÓRIO] Visual: {recurso_visuo} | Mics: {qtd_mic} | Som: {sistema_som}"
+            obs_final = f"{detalhes_equipamentos} | Obs: {obs_aud}" if obs_aud else detalhes_equipamentos
+            
+            dados_aud = {
+                "id": str(id_reserva_aud),
+                "professor": prof_aud,
+                "email": email_aud,
+                "unidade": unidade_aud,
+                "data": str(data_aud),
+                "inicio": inicio_aud.strftime("%H:%M"),
+                "fim": fim_aud.strftime("%H:%M"),
+                "quantidade": 1,  # Valor padrão para contagem do espaço
+                "obs": obs_final
+            }
+            
+            if salvar_reserva(dados_aud):
+                st.success(f"Reserva do Auditório confirmada com sucesso! Código: **{id_reserva_aud}**")
+
+# =========================================================
+# ABA 3: PAINEL DE CONSULTA DE RESERVAS
+# =========================================================
+with aba_minhas_reservas:
+    st.subheader("📋 Reservas Cadastradas no Sistema")
+    
+    if st.button("🔄 Atualizar Lista de Reservas"):
+        st.rerun()
+        
+    try:
+        df_reservas = conn.read(ttl=0)
+        
+        if df_reservas.empty:
+            st.info("Nenhuma reserva registrada no momento.")
+        else:
+            # Força a exibição da coluna 'id' como texto puro no painel
+            df_reservas['id'] = df_reservas['id'].astype(str)
+            
+            st.dataframe(
+                df_reservas.sort_values(by="data", ascending=False),
+                use_container_width=True
+            )
+    except Exception as e:
+        st.warning("Aguardando novas reservas ou atualize a página.")
