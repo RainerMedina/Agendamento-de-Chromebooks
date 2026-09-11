@@ -101,7 +101,6 @@ with aba_chromebook:
         if not prof_chrome or not email_chrome:
             st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail).")
         else:
-            # ID no formato texto para não virar notação científica no Sheets
             id_reserva = f"CHR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
             
             dados = {
@@ -146,7 +145,6 @@ with aba_auditorio:
         with col2:
             st.markdown("##### 🛠️ Equipamentos Necessários")
             
-            # Opções sem 'Projetor + Lousa Digital'
             recurso_visuo = st.radio("Apresentação Visual:", [
                 "Nenhum",
                 "Projetor / DataShow",
@@ -204,11 +202,16 @@ with aba_minhas_reservas:
         if df_reservas.empty:
             st.info("Nenhuma reserva registrada no momento.")
         else:
-            df_reservas['id'] = df_reservas['id'].astype(str)
+            # Seleciona apenas as colunas desejadas para exibição no painel
+            colunas_visiveis = ["professor", "unidade", "data", "inicio", "fim", "quantidade", "obs"]
+            
+            # Filtra o dataframe mantendo a ordem correta
+            df_exibicao = df_reservas[colunas_visiveis]
             
             st.dataframe(
-                df_reservas.sort_values(by="data", ascending=False),
-                use_container_width=True
+                df_exibicao.sort_values(by="data", ascending=False),
+                use_container_width=True,
+                hide_index=True  # Oculta também o número da linha (índice 0, 1, 2...)
             )
     except Exception as e:
         st.warning("Aguardando novas reservas ou atualize a página.")
