@@ -26,7 +26,7 @@ st.markdown(ocultar_menu, unsafe_allow_html=True)
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # =========================================================
-# 2. FUNÇÕES PARA MANIPULAR A PLANILHA (SALVAR E CANCELAR)
+# 2. FUNÇÕES PARA MANIPULAR A PLANILHA (SALVAR, BUSCAR E CANCELAR)
 # =========================================================
 def salvar_reserva(nova_reserva):
     try:
@@ -39,37 +39,34 @@ def salvar_reserva(nova_reserva):
         st.error(f"Erro ao salvar na planilha: {e}")
         return False
 
-def cancelar_reserva_por_data_horario(email_solicitante, data_reserva, inicio_reserva):
+def buscar_reservas_por_email(email_busca):
     try:
         df_atual = conn.read(ttl=0)
         if df_atual.empty:
-            return False, "Nenhuma reserva encontrada no sistema."
+            return pd.DataFrame()
         
-        # Normalização dos dados para busca
+        # Garante tratamento de texto no e-mail
         df_atual['email_norm'] = df_atual['email'].astype(str).str.strip().str.lower()
-        df_atual['data_norm'] = df_atual['data'].astype(str).str.strip()
-        df_atual['inicio_norm'] = df_atual['inicio'].astype(str).str.strip()
-
-        email_busca = str(email_solicitante).strip().lower()
-        data_busca = str(data_reserva).strip()
-        inicio_busca = inicio_reserva.strftime("%H:%M").strip()
-
-        # Procura a reserva correspondente ao E-mail, Data e Horário de Início
-        filtro = (
-            (df_atual['email_norm'] == email_busca) & 
-            (df_atual['data_norm'] == data_busca) & 
-            (df_atual['inicio_norm'] == inicio_busca)
-        )
+        email_limpo = str(email_busca).strip().lower()
         
-        if not df_atual[filtro].empty:
-            # Remove a linha encontrada e limpa as colunas auxiliares antes de atualizar a planilha
-            df_atualizado = df_atual[~filtro].drop(columns=['email_norm', 'data_norm', 'inicio_norm'])
-            conn.update(worksheet="Página1", data=df_atualizado)
-            return True, "Reserva cancelada com sucesso!"
-        else:
-            return False, "Nenhuma reserva encontrada para os dados informados (E-mail, Data e Horário)."
+        df_filtrado = df_atual[df_atual['email_norm'] == email_limpo].copy()
+        return df_filtrado.drop(columns=['email_norm'])
     except Exception as e:
-        return False, f"Erro ao processar o cancelamento: {e}"
+        st.error(f"Erro ao buscar reservas: {e}")
+        return pd.DataFrame()
+
+def remover_reserva_por_id(id_reserva):
+    try:
+        df_atual = conn.read(ttl=0)
+        df_atual['id'] = df_atual['id'].astype(str)
+        
+        # Mantém todas as reservas, exceto a que possui o ID selecionado
+        df_atualizado = df_atual[df_atual['id'] != str(id_reserva)]
+        conn.update(worksheet="Página1", data=df_atualizado)
+        return True
+    except Exception as e:
+        st.error(f"Erro ao remover a reserva: {e}")
+        return False
 
 # =========================================================
 # 3. CABEÇALHO COM LOGO E NAVEGAÇÃO POR ABAS
@@ -236,29 +233,37 @@ with aba_minhas_reservas:
         st.warning("Aguardando novas reservas ou atualize a página.")
 
 # =========================================================
-# ABA 4: CANCELAMENTO DE RESERVA (POR E-MAIL, DIA E HORÁRIO)
+# ABA 4: CANCELAMENTO DINÂMICO (BUSCAR POR E-MAIL E SELECIONAR)
 # =========================================================
 with aba_cancelar:
-    st.subheader("❌ Cancelar uma Reserva Existente")
-    st.caption("Informe seu e-mail institucional, a data e o horário de início da reserva que deseja cancelar.")
+    st.subheader("❌ Cancelar Agendamento")
+    st.caption("Digite seu e-mail institucional para listar todos os seus agendamentos ativos e escolher qual deseja cancelar.")
 
-    with st.form("form_cancelamento"):
-        email_cancelar = st.text_input("Seu E-mail Institucional*", key="canc_email")
+    email_busca = st.text_input("Informe seu E-mail Institucional*", key="busca_email_cancelar")
+    
+    if email_busca:
+        df_meus = buscar_reservas_por_email(email_busca)
         
-        col_canc1, col_canc2 = st.columns(2)
-        with col_canc1:
-            data_cancelar = st.date_input("Data da Reserva*", key="canc_data")
-        with col_canc2:
-            inicio_cancelar = st.time_input("Horário de Início*", key="canc_inicio")
-            
-        btn_cancelar = st.form_submit_button("Confirmar Cancelamento")
-
-    if btn_cancelar:
-        if not email_cancelar:
-            st.warning("Por favor, preencha seu e-mail institucional.")
+        if df_meus.empty:
+            st.warning("Nenhum agendamento encontrado para este e-mail.")
         else:
-            sucesso, msg = cancelar_reserva_por_data_horario(email_cancelar, data_cancelar, inicio_cancelar)
-            if sucesso:
-                st.success(msg)
-            else:
-                st.error(msg)
+            st.success(f"Encontrado(s) {len(df_meus)} agendamento(s) para este e-mail:")
+            
+            # Cria um dicionário de opções formatadas para o menu de seleção
+            opcoes_reserva = {}
+            for _, row in df_meus.iterrows():
+                # Formato da opção: Data | Horário | Local | (ID Interno)
+                rotulo = f"📅 {row['data']} | ⏰ {row['inicio']} às {row['fim']} | 📍 {row['unidade']} ({row['obs'][:30]}...)"
+                opcoes_reserva[rotulo] = str(row['id'])
+            
+            reserva_selecionada = st.selectbox(
+                "Selecione o agendamento que deseja cancelar:", 
+                options=list(opcoes_reserva.keys())
+            )
+            
+            if st.button("🗑️ Confirmar Cancelamento da Reserva Selecionada", type="primary"):
+                id_para_remover = opcoes_reserva[reserva_selecionada]
+                
+                if remover_reserva_por_id(id_para_remover):
+                    st.success("Reserva cancelada com sucesso!")
+                    st.rerun()
