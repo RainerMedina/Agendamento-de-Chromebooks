@@ -39,27 +39,35 @@ def salvar_reserva(nova_reserva):
         st.error(f"Erro ao salvar na planilha: {e}")
         return False
 
-def cancelar_reserva(id_reserva, email_solicitante):
+def cancelar_reserva_por_data_horario(email_solicitante, data_reserva, inicio_reserva):
     try:
         df_atual = conn.read(ttl=0)
         if df_atual.empty:
             return False, "Nenhuma reserva encontrada no sistema."
         
-        # Garante comparação tipo texto no ID e e-mail
-        df_atual['id'] = df_atual['id'].astype(str)
-        df_atual['email'] = df_atual['email'].astype(str).str.strip().str.lower()
-        email_busca = str(email_solicitante).strip().lower()
+        # Normalização dos dados para busca
+        df_atual['email_norm'] = df_atual['email'].astype(str).str.strip().str.lower()
+        df_atual['data_norm'] = df_atual['data'].astype(str).str.strip()
+        df_atual['inicio_norm'] = df_atual['inicio'].astype(str).str.strip()
 
-        # Procura a reserva pelo ID e e-mail correspondente
-        filtro = (df_atual['id'] == str(id_reserva)) & (df_atual['email'] == email_busca)
+        email_busca = str(email_solicitante).strip().lower()
+        data_busca = str(data_reserva).strip()
+        inicio_busca = inicio_reserva.strftime("%H:%M").strip()
+
+        # Procura a reserva correspondente ao E-mail, Data e Horário de Início
+        filtro = (
+            (df_atual['email_norm'] == email_busca) & 
+            (df_atual['data_norm'] == data_busca) & 
+            (df_atual['inicio_norm'] == inicio_busca)
+        )
         
         if not df_atual[filtro].empty:
-            # Remove a reserva da planilha
-            df_atualizado = df_atual[~filtro]
+            # Remove a linha encontrada e limpa as colunas auxiliares antes de atualizar a planilha
+            df_atualizado = df_atual[~filtro].drop(columns=['email_norm', 'data_norm', 'inicio_norm'])
             conn.update(worksheet="Página1", data=df_atualizado)
             return True, "Reserva cancelada com sucesso!"
         else:
-            return False, "Código de reserva ou e-mail não conferem. Verifique os dados digitados."
+            return False, "Nenhuma reserva encontrada para os dados informados (E-mail, Data e Horário)."
     except Exception as e:
         return False, f"Erro ao processar o cancelamento: {e}"
 
@@ -133,7 +141,7 @@ with aba_chromebook:
             }
             
             if salvar_reserva(dados):
-                st.success(f"Reserva de Chromebooks realizada com sucesso! Código para cancelamento: **{id_reserva}**")
+                st.success("Reserva de Chromebooks realizada com sucesso!")
 
 # =========================================================
 # ABA 2: RESERVA DE AUDITÓRIO
@@ -199,7 +207,7 @@ with aba_auditorio:
             }
             
             if salvar_reserva(dados_aud):
-                st.success(f"Reserva do Auditório confirmada com sucesso! Código para cancelamento: **{id_reserva_aud}**")
+                st.success("Reserva do Auditório confirmada com sucesso!")
 
 # =========================================================
 # ABA 3: PAINEL DE CONSULTA DE RESERVAS
@@ -228,23 +236,28 @@ with aba_minhas_reservas:
         st.warning("Aguardando novas reservas ou atualize a página.")
 
 # =========================================================
-# ABA 4: CANCELAMENTO DE RESERVA
+# ABA 4: CANCELAMENTO DE RESERVA (POR E-MAIL, DIA E HORÁRIO)
 # =========================================================
 with aba_cancelar:
     st.subheader("❌ Cancelar uma Reserva Existente")
-    st.caption("Informe o seu e-mail institucional e o código da reserva (ex: CHR-... ou AUD-...) enviado na confirmação.")
+    st.caption("Informe seu e-mail institucional, a data e o horário de início da reserva que deseja cancelar.")
 
     with st.form("form_cancelamento"):
-        email_cancelar = st.text_input("Seu E-mail Institucional*")
-        id_cancelar = st.text_input("Código da Reserva (ID)* (ex: CHR-2026... ou AUD-2026...)")
+        email_cancelar = st.text_input("Seu E-mail Institucional*", key="canc_email")
         
+        col_canc1, col_canc2 = st.columns(2)
+        with col_canc1:
+            data_cancelar = st.date_input("Data da Reserva*", key="canc_data")
+        with col_canc2:
+            inicio_cancelar = st.time_input("Horário de Início*", key="canc_inicio")
+            
         btn_cancelar = st.form_submit_button("Confirmar Cancelamento")
 
     if btn_cancelar:
-        if not email_cancelar or not id_cancelar:
-            st.warning("Por favor, preencha o e-mail e o código da reserva.")
+        if not email_cancelar:
+            st.warning("Por favor, preencha seu e-mail institucional.")
         else:
-            sucesso, msg = cancelar_reserva(id_cancelar.strip(), email_cancelar.strip())
+            sucesso, msg = cancelar_reserva_por_data_horario(email_cancelar, data_cancelar, inicio_cancelar)
             if sucesso:
                 st.success(msg)
             else:
