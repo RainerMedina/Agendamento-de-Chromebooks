@@ -26,25 +26,42 @@ st.markdown(ocultar_menu, unsafe_allow_html=True)
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # =========================================================
-# 2. FUNÇÃO PARA SALVAR RESERVAS NA PLANILHA
+# 2. FUNÇÕES PARA MANIPULAR A PLANILHA (SALVAR E CANCELAR)
 # =========================================================
 def salvar_reserva(nova_reserva):
     try:
-        # Lê os dados atuais da planilha
         df_atual = conn.read(ttl=0)
-        
-        # Converte a nova reserva em DataFrame
         df_novo = pd.DataFrame([nova_reserva])
-        
-        # Junta os dados antigos com os novos
         df_final = pd.concat([df_atual, df_novo], ignore_index=True)
-        
-        # Atualiza no Google Sheets na aba Página1
         conn.update(worksheet="Página1", data=df_final)
         return True
     except Exception as e:
         st.error(f"Erro ao salvar na planilha: {e}")
         return False
+
+def cancelar_reserva(id_reserva, email_solicitante):
+    try:
+        df_atual = conn.read(ttl=0)
+        if df_atual.empty:
+            return False, "Nenhuma reserva encontrada no sistema."
+        
+        # Garante comparação tipo texto no ID e e-mail
+        df_atual['id'] = df_atual['id'].astype(str)
+        df_atual['email'] = df_atual['email'].astype(str).str.strip().str.lower()
+        email_busca = str(email_solicitante).strip().lower()
+
+        # Procura a reserva pelo ID e e-mail correspondente
+        filtro = (df_atual['id'] == str(id_reserva)) & (df_atual['email'] == email_busca)
+        
+        if not df_atual[filtro].empty:
+            # Remove a reserva da planilha
+            df_atualizado = df_atual[~filtro]
+            conn.update(worksheet="Página1", data=df_atualizado)
+            return True, "Reserva cancelada com sucesso!"
+        else:
+            return False, "Código de reserva ou e-mail não conferem. Verifique os dados digitados."
+    except Exception as e:
+        return False, f"Erro ao processar o cancelamento: {e}"
 
 # =========================================================
 # 3. CABEÇALHO COM LOGO E NAVEGAÇÃO POR ABAS
@@ -52,7 +69,6 @@ def salvar_reserva(nova_reserva):
 col_logo, col_titulo = st.columns([1, 4])
 
 with col_logo:
-    # Carrega o arquivo Logo.png enviado ao GitHub
     try:
         st.image("Logo.png", width=160)
     except:
@@ -62,10 +78,11 @@ with col_titulo:
     st.title("Portal de Reservas - GDV")
     st.caption("Gerenciamento integrado de Chromebooks e Auditório para professores e colaboradores.")
 
-aba_chromebook, aba_auditorio, aba_minhas_reservas = st.tabs([
+aba_chromebook, aba_auditorio, aba_minhas_reservas, aba_cancelar = st.tabs([
     "💻 Reservar Chromebooks", 
     "🎭 Reservar Auditório", 
-    "📋 Painel de Reservas"
+    "📋 Painel de Reservas",
+    "❌ Cancelar Reserva"
 ])
 
 # =========================================================
@@ -116,7 +133,7 @@ with aba_chromebook:
             }
             
             if salvar_reserva(dados):
-                st.success(f"Reserva de Chromebooks realizada com sucesso! Código: **{id_reserva}**")
+                st.success(f"Reserva de Chromebooks realizada com sucesso! Código para cancelamento: **{id_reserva}**")
 
 # =========================================================
 # ABA 2: RESERVA DE AUDITÓRIO
@@ -130,10 +147,7 @@ with aba_auditorio:
         with col1:
             prof_aud = st.text_input("Nome do Solicitante / Responsável*", key="a_prof")
             email_aud = st.text_input("E-mail institucional*", key="a_email")
-            
-            # Local fixado e unificado como 'Auditório GDV'
             unidade_aud = st.text_input("Local*", value="Auditório GDV", disabled=True, key="a_unidade")
-            
             data_aud = st.date_input("Data do Evento / Aula*", min_value=date.today(), key="a_data")
             
             col_ah1, col_ah2 = st.columns(2)
@@ -185,7 +199,7 @@ with aba_auditorio:
             }
             
             if salvar_reserva(dados_aud):
-                st.success(f"Reserva do Auditório confirmada com sucesso! Código: **{id_reserva_aud}**")
+                st.success(f"Reserva do Auditório confirmada com sucesso! Código para cancelamento: **{id_reserva_aud}**")
 
 # =========================================================
 # ABA 3: PAINEL DE CONSULTA DE RESERVAS
@@ -202,16 +216,36 @@ with aba_minhas_reservas:
         if df_reservas.empty:
             st.info("Nenhuma reserva registrada no momento.")
         else:
-            # Seleciona apenas as colunas desejadas para exibição no painel
             colunas_visiveis = ["professor", "unidade", "data", "inicio", "fim", "quantidade", "obs"]
-            
-            # Filtra o dataframe mantendo a ordem correta
             df_exibicao = df_reservas[colunas_visiveis]
             
             st.dataframe(
                 df_exibicao.sort_values(by="data", ascending=False),
                 use_container_width=True,
-                hide_index=True  # Oculta também o número da linha (índice 0, 1, 2...)
+                hide_index=True
             )
     except Exception as e:
         st.warning("Aguardando novas reservas ou atualize a página.")
+
+# =========================================================
+# ABA 4: CANCELAMENTO DE RESERVA
+# =========================================================
+with aba_cancelar:
+    st.subheader("❌ Cancelar uma Reserva Existente")
+    st.caption("Informe o seu e-mail institucional e o código da reserva (ex: CHR-... ou AUD-...) enviado na confirmação.")
+
+    with st.form("form_cancelamento"):
+        email_cancelar = st.text_input("Seu E-mail Institucional*")
+        id_cancelar = st.text_input("Código da Reserva (ID)* (ex: CHR-2026... ou AUD-2026...)")
+        
+        btn_cancelar = st.form_submit_button("Confirmar Cancelamento")
+
+    if btn_cancelar:
+        if not email_cancelar or not id_cancelar:
+            st.warning("Por favor, preencha o e-mail e o código da reserva.")
+        else:
+            sucesso, msg = cancelar_reserva(id_cancelar.strip(), email_cancelar.strip())
+            if sucesso:
+                st.success(msg)
+            else:
+                st.error(msg)
