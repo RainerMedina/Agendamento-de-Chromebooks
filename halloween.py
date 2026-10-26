@@ -4,7 +4,7 @@ import os
 
 st.set_page_config(page_title="Halloween Colégio GDV", page_icon="🎃", layout="wide")
 
-# Título principal atualizado
+# Título principal
 st.title("🎃 Halloween Colégio GDV")
 st.subheader("Formulário de Votação do Concurso")
 
@@ -65,4 +65,29 @@ with col_form:
                 }])
                 
                 novo_voto.to_csv(ARQUIVO_DADOS, mode='a', header=False, index=False)
-                st.success(f"Voto gravado para **
+                st.success(f"Voto gravado para **{aluno}** ({serie}) com total de **{nota_final:.1f}** pontos!")
+
+with col_placar:
+    st.subheader("📊 Resultados Registrados")
+    
+    if os.path.exists(ARQUIVO_DADOS):
+        df = pd.read_csv(ARQUIVO_DADOS)
+        
+        if not df.empty:
+            # Filtro por série para o placar
+            serie_filtro = st.selectbox("Filtrar Placar por Série", options=["Todas"] + turmas)
+            
+            if serie_filtro != "Todas":
+                df_exibicao = df[df["Série/Ano"] == serie_filtro]
+            else:
+                df_exibicao = df
+                
+            st.write("**Ranking por Média Geral:**")
+            ranking = df_exibicao.groupby(["Série/Ano", "Aluno"])["Nota Final"].mean().reset_index()
+            ranking = ranking.sort_values(by="Nota Final", ascending=False)
+            st.dataframe(ranking, use_container_width=True)
+            
+            with st.expander("Ver todos os lançamentos detalhados"):
+                st.dataframe(df_exibicao, use_container_width=True)
+        else:
+            st.info("Nenhum voto registrado ainda.")
