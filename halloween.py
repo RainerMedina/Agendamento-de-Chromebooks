@@ -86,10 +86,30 @@ with col_placar:
             df_exibicao = df_votos
             
         st.write("**Ranking por Média Geral:**")
+        
+        # Converte a Nota Final para número
         df_exibicao["Nota Final"] = pd.to_numeric(df_exibicao["Nota Final"], errors="coerce")
-        ranking = df_exibicao.groupby(["Série/Ano", "Aluno"])["Nota Final"].mean().reset_index()
-        ranking = ranking.sort_values(by="Nota Final", ascending=False)
-        st.dataframe(ranking, use_container_width=True)
+        
+        # Agrupa calculando Média e Número de Votos para desempate
+        ranking = df_exibicao.groupby(["Série/Ano", "Aluno"]).agg(
+            Media_Final=("Nota Final", "mean"),
+            Qtd_Votos=("Nota Final", "count")
+        ).reset_index()
+        
+        # Ordena primeiramente por Média Final e depois por Quantidade de Votos
+        ranking = ranking.sort_values(
+            by=["Media_Final", "Qtd_Votos"], 
+            ascending=[False, False]
+        ).reset_index(drop=True)
+        
+        # Formata a exibição final
+        ranking["Média Final"] = ranking["Media_Final"].round(2)
+        ranking_exibicao = ranking[["Série/Ano", "Aluno", "Média Final", "Qtd_Votos"]]
+        ranking_exibicao.columns = ["Série/Ano", "Aluno", "Média Final", "Nº Avaliações"]
+        
+        # Ajusta a numeração do ranking (1º, 2º, 3º...)
+        ranking_exibicao.index = ranking_exibicao.index + 1
+        st.dataframe(ranking_exibicao, use_container_width=True)
         
         with st.expander("Ver todos os lançamentos detalhados"):
             st.dataframe(df_exibicao, use_container_width=True)
