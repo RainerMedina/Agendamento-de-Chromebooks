@@ -87,32 +87,33 @@ with col_placar:
             
         st.write("**Ranking por Média Geral:**")
         
-        # Converte as colunas numéricas para garantir os cálculos de média
+        # Converte colunas numéricas
         df_exibicao["Nota Final"] = pd.to_numeric(df_exibicao["Nota Final"], errors="coerce")
         df_exibicao["Criatividade"] = pd.to_numeric(df_exibicao["Criatividade"], errors="coerce")
         
-        # Agrupa calculando a Média Final, Nº de Avaliações e Média de Criatividade (Critério de Desempate)
+        # Agrupa calculando a Média Final, Qtd de Votos e Média de Criatividade
         ranking = df_exibicao.groupby(["Série/Ano", "Aluno"]).agg(
             Media_Final=("Nota Final", "mean"),
             Qtd_Votos=("Nota Final", "count"),
             Media_Criatividade=("Criatividade", "mean")
         ).reset_index()
         
-        # ORDENAÇÃO: 1º Média Final, 2º Nº de Avaliações, 3º Média de Criatividade (Desempate)
+        # Ordena: 1º Média Final, 2º Qtd Votos, 3º Criatividade (Desempate)
         ranking = ranking.sort_values(
             by=["Media_Final", "Qtd_Votos", "Media_Criatividade"], 
             ascending=[False, False, False]
         ).reset_index(drop=True)
         
-        # Formatação das médias para exibição limpa com 2 casas decimais
-        ranking["Média Final"] = ranking["Media_Final"].round(2)
-        ranking["Média Criatividade"] = ranking["Media_Criatividade"].round(2)
+        # Formata e renomeia as colunas
+        ranking_exibicao = pd.DataFrame({
+            "Série/Ano": ranking["Série/Ano"],
+            "Aluno": ranking["Aluno"],
+            "Média Final": ranking["Media_Final"].round(2),
+            "Nº Avaliações": ranking["Qtd_Votos"],
+            "Média Criatividade (Desempate)": ranking["Media_Criatividade"].round(2)
+        })
         
-        # Seleção e renomeação das colunas do ranking
-        ranking_exibicao = ranking[["Série/Ano", "Aluno", "Média Final", "Nº Avaliações", "Média Criatividade"]]
-        ranking_exibicao.columns = ["Série/Ano", "Aluno", "Média Final", "Nº Avaliações", "Média Criatividade (Desempate)"]
-        
-        # Ajusta a numeração do ranking (1º, 2º, 3º...)
+        # Ajusta índice para ranking (1º, 2º...)
         ranking_exibicao.index = ranking_exibicao.index + 1
         st.dataframe(ranking_exibicao, use_container_width=True)
         
