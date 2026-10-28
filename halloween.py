@@ -7,10 +7,10 @@ st.set_page_config(page_title="Halloween Colégio GDV", page_icon="🎃", layout
 st.title("🎃 Halloween Colégio GDV")
 st.subheader("Formulário de Votação do Concurso")
 
-# Ligação ao Google Sheets
+# Conexão com o Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# URL da sua planilha do Google Sheets
+# URL da planilha do Google Sheets
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1RGh0FRMgZGJTE-aXWGfHqYsdl0mzxZ5Qr-uXgKtcmmY/edit?gid=0#gid=0"
 
 def carregar_dados():
@@ -81,31 +81,36 @@ with col_placar:
         serie_filtro = st.selectbox("Filtrar Placar por Série", options=["Todas"] + turmas)
         
         if serie_filtro != "Todas":
-            df_exibicao = df_votos[df_votos["Série/Ano"] == serie_filtro]
+            df_exibicao = df_votos[df_votos["Série/Ano"] == serie_filtro].copy()
         else:
-            df_exibicao = df_votos
+            df_exibicao = df_votos.copy()
             
         st.write("**Ranking por Média Geral:**")
         
-        # Converte a Nota Final para número
+        # Converte as colunas numéricas para garantir os cálculos de média
         df_exibicao["Nota Final"] = pd.to_numeric(df_exibicao["Nota Final"], errors="coerce")
+        df_exibicao["Criatividade"] = pd.to_numeric(df_exibicao["Criatividade"], errors="coerce")
         
-        # Agrupa calculando Média e Número de Votos para desempate
+        # Agrupa calculando a Média Final, Nº de Avaliações e Média de Criatividade (Critério de Desempate)
         ranking = df_exibicao.groupby(["Série/Ano", "Aluno"]).agg(
             Media_Final=("Nota Final", "mean"),
-            Qtd_Votos=("Nota Final", "count")
+            Qtd_Votos=("Nota Final", "count"),
+            Media_Criatividade=("Criatividade", "mean")
         ).reset_index()
         
-        # Ordena primeiramente por Média Final e depois por Quantidade de Votos
+        # ORDENAÇÃO: 1º Média Final, 2º Nº de Avaliações, 3º Média de Criatividade (Desempate)
         ranking = ranking.sort_values(
-            by=["Media_Final", "Qtd_Votos"], 
-            ascending=[False, False]
+            by=["Media_Final", "Qtd_Votos", "Media_Criatividade"], 
+            ascending=[False, False, False]
         ).reset_index(drop=True)
         
-        # Formata a exibição final
+        # Formatação das médias para exibição limpa com 2 casas decimais
         ranking["Média Final"] = ranking["Media_Final"].round(2)
-        ranking_exibicao = ranking[["Série/Ano", "Aluno", "Média Final", "Qtd_Votos"]]
-        ranking_exibicao.columns = ["Série/Ano", "Aluno", "Média Final", "Nº Avaliações"]
+        ranking["Média Criatividade"] = ranking["Media_Criatividade"].round(2)
+        
+        # Seleção e renomeação das colunas do ranking
+        ranking_exibicao = ranking[["Série/Ano", "Aluno", "Média Final", "Nº Avaliações", "Média Criatividade"]]
+        ranking_exibicao.columns = ["Série/Ano", "Aluno", "Média Final", "Nº Avaliações", "Média Criatividade (Desempate)"]
         
         # Ajusta a numeração do ranking (1º, 2º, 3º...)
         ranking_exibicao.index = ranking_exibicao.index + 1
