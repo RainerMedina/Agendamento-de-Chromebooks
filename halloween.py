@@ -1,25 +1,30 @@
 import streamlit as st
 import pandas as pd
-import os
+from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="Halloween Colégio GDV", page_icon="🎃", layout="wide")
 
-# Título principal
 st.title("🎃 Halloween Colégio GDV")
 st.subheader("Formulário de Votação do Concurso")
 
-ARQUIVO_DADOS = "votos_halloween.csv"
+# Ligação ao Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Inicializa o CSV se não existir
-if not os.path.exists(ARQUIVO_DADOS):
-    df_inicial = pd.DataFrame(columns=[
-        "Jurado", "Série/Ano", "Aluno", 
-        "Criatividade", "Execução", "Performance", "Adequação ao Tema", 
-        "Nota Final"
-    ])
-    df_inicial.to_csv(ARQUIVO_DADOS, index=False)
+# URL da sua planilha do Google Sheets
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1RGh0FRMgZGJTE-aXWGfHqYsdl0mzxZ5Qr-uXgKtcmmY/edit?gid=0#gid=0"
 
-# Lista de Turmas (5º Ano à 3ª Série)
+def carregar_dados():
+    try:
+        return conn.read(spreadsheet=URL_PLANILHA, ttl="0s")
+    except Exception:
+        return pd.DataFrame(columns=[
+            "Jurado", "Série/Ano", "Aluno", 
+            "Criatividade", "Execução", "Performance", "Adequação ao Tema", 
+            "Nota Final"
+        ])
+
+df_votos = carregar_dados()
+
 turmas = [
     "5º Ano", "6º Ano", "7º Ano", "8º Ano", "9º Ano",
     "1ª Série EM", "2ª Série EM", "3ª Série EM"
@@ -38,7 +43,6 @@ with col_form:
         st.markdown("---")
         st.markdown("**Notas por Categoria (Cada uma vale de 0.0 a 2.5):**")
         
-        # 4 notas limitadas de 0.0 a 2.5
         cria = st.number_input("1. Criatividade", min_value=0.0, max_value=2.5, step=0.1, format="%.1f")
         exec = st.number_input("2. Execução", min_value=0.0, max_value=2.5, step=0.1, format="%.1f")
         perf = st.number_input("3. Performance", min_value=0.0, max_value=2.5, step=0.1, format="%.1f")
@@ -64,30 +68,30 @@ with col_form:
                     "Nota Final": nota_final
                 }])
                 
-                novo_voto.to_csv(ARQUIVO_DADOS, mode='a', header=False, index=False)
+                df_atualizado = pd.concat([df_votos, novo_voto], ignore_index=True)
+                conn.update(spreadsheet=URL_PLANILHA, data=df_atualizado)
+                
                 st.success(f"Voto gravado para **{aluno}** ({serie}) com total de **{nota_final:.1f}** pontos!")
+                st.rerun()
 
 with col_placar:
     st.subheader("📊 Resultados Registrados")
     
-    if os.path.exists(ARQUIVO_DADOS):
-        df = pd.read_csv(ARQUIVO_DADOS)
+    if not df_votos.empty:
+        serie_filtro = st.selectbox("Filtrar Placar por Série", options=["Todas"] + turmas)
         
-        if not df.empty:
-            # Filtro por série para o placar
-            serie_filtro = st.selectbox("Filtrar Placar por Série", options=["Todas"] + turmas)
-            
-            if serie_filtro != "Todas":
-                df_exibicao = df[df["Série/Ano"] == serie_filtro]
-            else:
-                df_exibicao = df
-                
-            st.write("**Ranking por Média Geral:**")
-            ranking = df_exibicao.groupby(["Série/Ano", "Aluno"])["Nota Final"].mean().reset_index()
-            ranking = ranking.sort_values(by="Nota Final", ascending=False)
-            st.dataframe(ranking, use_container_width=True)
-            
-            with st.expander("Ver todos os lançamentos detalhados"):
-                st.dataframe(df_exibicao, use_container_width=True)
+        if serie_filtro != "Todas":
+            df_exibicao = df_votos[df_votos["Série/Ano"] == serie_filtro]
         else:
-            st.info("Nenhum voto registrado ainda.")
+            df_exibicao = df_votos
+            
+        st.write("**Ranking por Média Geral:**")
+        df_exibicao["Nota Final"] = pd.to_numeric(df_exibicao["Nota Final"], errors="coerce")
+        ranking = df_exibicao.groupby(["Série/Ano", "Aluno"])["Nota Final"].mean().reset_index()
+        ranking = ranking.sort_values(by="Nota Final", ascending=False)
+        st.dataframe(ranking, use_container_width=True)
+        
+        with st.expander("Ver todos os lançamentos detalhados"):
+            st.dataframe(df_exibicao, use_container_width=True)
+    else:
+        st.info("Nenhum voto registrado ainda na planilha.")
