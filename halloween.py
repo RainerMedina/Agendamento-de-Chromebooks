@@ -32,7 +32,7 @@ turmas = [
 ]
 
 # Lista pré-definida de Jurados
-lista_jurados = ["Beatriz", "Caio", "Sting", "Outro..."]
+lista_jurados = ["Beatriz", "Portugal", "Rafaela", "Outro..."]
 
 col_form, col_placar = st.columns([1, 1])
 
