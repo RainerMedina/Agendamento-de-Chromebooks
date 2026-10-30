@@ -15,7 +15,9 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1RGh0FRMgZGJTE-aXWGfHqYsd
 
 def carregar_dados():
     try:
-        return conn.read(spreadsheet=URL_PLANILHA, ttl="0s")
+        # ttl="0s" impede o Streamlit de usar cache desatualizado ao carregar a página
+        df = conn.read(spreadsheet=URL_PLANILHA, ttl="0s")
+        return df.dropna(how="all") # Remove linhas totalmente vazias se houver
     except Exception:
         return pd.DataFrame(columns=[
             "Jurado", "Série/Ano", "Aluno", 
@@ -25,10 +27,13 @@ def carregar_dados():
 
 df_votos = carregar_dados()
 
+# Lista de turmas atualizada para conter apenas o Ensino Médio
 turmas = [
-    "5º Ano", "6º Ano", "7º Ano", "8º Ano", "9º Ano",
     "1ª Série EM", "2ª Série EM", "3ª Série EM"
 ]
+
+# Lista pré-definida de Jurados
+lista_jurados = ["Beatriz", "Caio", "Sting", "Outro..."]
 
 col_form, col_placar = st.columns([1, 1])
 
@@ -36,7 +41,14 @@ with col_form:
     st.subheader("📝 Avaliação do Jurado")
     
     with st.form("form_votacao", clear_on_submit=True):
-        jurado = st.text_input("Nome do Jurado")
+        jurado_selecionado = st.selectbox("Selecione o Jurado", options=lista_jurados)
+        
+        # Se escolher "Outro...", abre um campo de texto para digitar
+        if jurado_selecionado == "Outro...":
+            jurado_nome = st.text_input("Digite o Nome do Jurado")
+        else:
+            jurado_nome = jurado_selecionado
+            
         serie = st.selectbox("Selecione a Série/Ano", options=turmas)
         aluno = st.text_input("Nome do Aluno")
         
@@ -54,13 +66,13 @@ with col_form:
         enviado = st.form_submit_button("💾 Enviar Voto")
         
         if enviado:
-            if not jurado.strip() or not aluno.strip():
-                st.error("Por favor, preencha o nome do jurado e do aluno!")
+            if not jurado_nome.strip() or not aluno.strip():
+                st.error("Por favor, selecione/preencha o jurado e o nome do aluno!")
             else:
                 novo_voto = pd.DataFrame([{
-                    "Jurado": jurado,
+                    "Jurado": jurado_nome.strip(),
                     "Série/Ano": serie,
-                    "Aluno": aluno,
+                    "Aluno": aluno.strip(),
                     "Criatividade": cria,
                     "Execução": exec,
                     "Performance": perf,
@@ -68,8 +80,8 @@ with col_form:
                     "Nota Final": nota_final
                 }])
                 
-                df_atualizado = pd.concat([df_votos, novo_voto], ignore_index=True)
-                conn.update(spreadsheet=URL_PLANILHA, data=df_atualizado)
+                # USA APPEND EM VEZ DE OVERWRITE: Adiciona apenas a linha nova sem sobrescrever o arquivo existente
+                conn.append(spreadsheet=URL_PLANILHA, data=novo_voto)
                 
                 st.success(f"Voto gravado para **{aluno}** ({serie}) com total de **{nota_final:.1f}** pontos!")
                 st.rerun()
@@ -83,7 +95,8 @@ with col_placar:
         if serie_filtro != "Todas":
             df_exibicao = df_votos[df_votos["Série/Ano"] == serie_filtro].copy()
         else:
-            df_exibicao = df_votos.copy()
+            # Filtra o placar para exibir apenas os votos das séries ativas
+            df_exibicao = df_votos[df_votos["Série/Ano"].isin(turmas)].copy()
             
         st.write("**Ranking por Média Geral:**")
         
@@ -104,7 +117,7 @@ with col_placar:
             ascending=[False, False, False]
         ).reset_index(drop=True)
         
-        # Formata e renomeia as colunas
+        # Formata e exibe
         ranking_exibicao = pd.DataFrame({
             "Série/Ano": ranking["Série/Ano"],
             "Aluno": ranking["Aluno"],
@@ -113,7 +126,6 @@ with col_placar:
             "Média Criatividade (Desempate)": ranking["Media_Criatividade"].round(2)
         })
         
-        # Ajusta índice para ranking (1º, 2º...)
         ranking_exibicao.index = ranking_exibicao.index + 1
         st.dataframe(ranking_exibicao, use_container_width=True)
         
