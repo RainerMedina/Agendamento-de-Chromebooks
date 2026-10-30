@@ -15,9 +15,8 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1RGh0FRMgZGJTE-aXWGfHqYsd
 
 def carregar_dados():
     try:
-        # ttl="0s" impede o Streamlit de usar cache desatualizado ao carregar a página
         df = conn.read(spreadsheet=URL_PLANILHA, ttl="0s")
-        return df.dropna(how="all") # Remove linhas totalmente vazias se houver
+        return df.dropna(how="all")
     except Exception:
         return pd.DataFrame(columns=[
             "Jurado", "Série/Ano", "Aluno", 
@@ -27,7 +26,7 @@ def carregar_dados():
 
 df_votos = carregar_dados()
 
-# Lista de turmas atualizada para conter apenas o Ensino Médio
+# Turmas ativas do Ensino Médio
 turmas = [
     "1ª Série EM", "2ª Série EM", "3ª Série EM"
 ]
@@ -43,7 +42,6 @@ with col_form:
     with st.form("form_votacao", clear_on_submit=True):
         jurado_selecionado = st.selectbox("Selecione o Jurado", options=lista_jurados)
         
-        # Se escolher "Outro...", abre um campo de texto para digitar
         if jurado_selecionado == "Outro...":
             jurado_nome = st.text_input("Digite o Nome do Jurado")
         else:
@@ -80,8 +78,11 @@ with col_form:
                     "Nota Final": nota_final
                 }])
                 
-                # USA APPEND EM VEZ DE OVERWRITE: Adiciona apenas a linha nova sem sobrescrever o arquivo existente
-                conn.append(spreadsheet=URL_PLANILHA, data=novo_voto)
+                # Re-lê os dados em tempo real antes de gravar para garantir que nenhum voto seja sobrescrito
+                dados_mais_recentes = carregar_dados()
+                df_atualizado = pd.concat([dados_mais_recentes, novo_voto], ignore_index=True)
+                
+                conn.update(spreadsheet=URL_PLANILHA, data=df_atualizado)
                 
                 st.success(f"Voto gravado para **{aluno}** ({serie}) com total de **{nota_final:.1f}** pontos!")
                 st.rerun()
@@ -95,7 +96,6 @@ with col_placar:
         if serie_filtro != "Todas":
             df_exibicao = df_votos[df_votos["Série/Ano"] == serie_filtro].copy()
         else:
-            # Filtra o placar para exibir apenas os votos das séries ativas
             df_exibicao = df_votos[df_votos["Série/Ano"].isin(turmas)].copy()
             
         st.write("**Ranking por Média Geral:**")
