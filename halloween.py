@@ -66,3 +66,38 @@ with col_form:
         
         if enviado:
             if not jurado_nome.strip() or not aluno.strip():
+                st.error("Por favor, selecione/preencha o jurado e o nome do aluno!")
+            else:
+                novo_voto = pd.DataFrame([{
+                    "Jurado": jurado_nome.strip(),
+                    "Série/Ano": serie,
+                    "Aluno": aluno.strip(),
+                    "Criatividade": cria,
+                    "Execução": exec,
+                    "Performance": perf,
+                    "Adequação ao Tema": adeq,
+                    "Nota Final": nota_final
+                }])
+                
+                # Re-lê os dados antes de gravar para evitar sobrescrever registros existentes
+                dados_mais_recentes = carregar_dados()
+                df_atualizado = pd.concat([dados_mais_recentes, novo_voto], ignore_index=True)
+                
+                # Gravação na planilha
+                conn.update(spreadsheet=URL_PLANILHA, data=df_atualizado)
+                
+                st.success(f"Voto gravado para **{aluno}** ({serie}) com total de **{nota_final:.1f}** pontos!")
+                st.rerun()
+
+with col_placar:
+    st.subheader("📊 Resultados Registrados")
+    
+    if not df_votos.empty:
+        serie_filtro = st.selectbox("Filtrar Placar por Série", options=["Todas"] + turmas)
+        
+        if serie_filtro != "Todas":
+            df_exibicao = df_votos[df_votos["Série/Ano"] == serie_filtro].copy()
+        else:
+            df_exibicao = df_votos[df_votos["Série/Ano"].isin(turmas)].copy()
+            
+        st.write("**Ranking por
