@@ -7,15 +7,13 @@ st.set_page_config(page_title="Halloween Colégio GDV", page_icon="🎃", layout
 st.title("🎃 Halloween Colégio GDV")
 st.subheader("Formulário de Votação do Concurso")
 
-# Conexão com o Google Sheets
+# Conexão com o Google Sheets utilizando os Secrets cadastrados
 conn = st.connection("gsheets", type=GSheetsConnection)
-
-# URL da planilha do Google Sheets
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1RGh0FRMgZGJTE-aXWGfHqYsdl0mzxZ5Qr-uXgKtcmmY/edit?gid=0#gid=0"
 
 def carregar_dados():
     try:
-        df = conn.read(spreadsheet=URL_PLANILHA, ttl="0s")
+        # Lê a planilha vinculada nos Secrets
+        df = conn.read(ttl="0s")
         return df.dropna(how="all")
     except Exception:
         return pd.DataFrame(columns=[
@@ -32,7 +30,7 @@ turmas = [
 ]
 
 # Lista pré-definida de Jurados
-lista_jurados = ["Beatriz", "Portugal", "Rafaela", "Outro..."]
+lista_jurados = ["Beatriz", "Caio", "Sting", "Outro..."]
 
 col_form, col_placar = st.columns([1, 1])
 
@@ -78,11 +76,12 @@ with col_form:
                     "Nota Final": nota_final
                 }])
                 
-                # Re-lê os dados em tempo real antes de gravar para garantir que nenhum voto seja sobrescrito
+                # Re-lê os dados em tempo real antes de gravar para evitar sobrescrever votos
                 dados_mais_recentes = carregar_dados()
                 df_atualizado = pd.concat([dados_mais_recentes, novo_voto], ignore_index=True)
                 
-                conn.update(spreadsheet=URL_PLANILHA, data=df_atualizado)
+                # Gravação corrigida: utiliza a conexão ativa do Secrets
+                conn.update(data=df_atualizado)
                 
                 st.success(f"Voto gravado para **{aluno}** ({serie}) com total de **{nota_final:.1f}** pontos!")
                 st.rerun()
@@ -104,14 +103,14 @@ with col_placar:
         df_exibicao["Nota Final"] = pd.to_numeric(df_exibicao["Nota Final"], errors="coerce")
         df_exibicao["Criatividade"] = pd.to_numeric(df_exibicao["Criatividade"], errors="coerce")
         
-        # Agrupa calculando a Média Final, Qtd de Votos e Média de Criatividade
+        # Agrupa calculando Média Final, Qtd de Votos e Média de Criatividade
         ranking = df_exibicao.groupby(["Série/Ano", "Aluno"]).agg(
             Media_Final=("Nota Final", "mean"),
             Qtd_Votos=("Nota Final", "count"),
             Media_Criatividade=("Criatividade", "mean")
         ).reset_index()
         
-        # Ordena: 1º Média Final, 2º Qtd Votos, 3º Criatividade (Desempate)
+        # Ordenação
         ranking = ranking.sort_values(
             by=["Media_Final", "Qtd_Votos", "Media_Criatividade"], 
             ascending=[False, False, False]
