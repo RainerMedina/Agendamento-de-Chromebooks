@@ -11,12 +11,11 @@ st.subheader("Formulário de Votação do Concurso")
 # URL da planilha do Google Sheets
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1RGh0FRMgZGJTE-aXWGfHqYsdl0mzxZ5Qr-uXgKtcmmY/edit?gid=0#gid=0"
 
-# Inicialização da conexão com o Google Sheets através da Service Account
+# Conexão com o Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def carregar_dados():
     try:
-        # Lê os dados da planilha usando a URL explicitada
         df = conn.read(spreadsheet=URL_PLANILHA, ttl="0s")
         return df.dropna(how="all")
     except Exception:
@@ -56,4 +55,14 @@ with col_form:
         st.markdown("**Notas por Categoria (Cada uma vale de 0.0 a 2.5):**")
         
         cria = st.number_input("1. Criatividade", min_value=0.0, max_value=2.5, step=0.1, format="%.1f")
-        exec = st.number_input("2. Execução", min_value=0.0, max_value=2.5
+        exec = st.number_input("2. Execução", min_value=0.0, max_value=2.5, step=0.1, format="%.1f")
+        perf = st.number_input("3. Performance", min_value=0.0, max_value=2.5, step=0.1, format="%.1f")
+        adeq = st.number_input("4. Adequação ao Tema", min_value=0.0, max_value=2.5, step=0.1, format="%.1f")
+        
+        nota_final = cria + exec + perf + adeq
+        st.markdown(f"### **Nota Total: :green[{nota_final:.1f} / 10.0]**")
+        
+        enviado = st.form_submit_button("💾 Enviar Voto")
+        
+        if enviado:
+            if not jurado_nome.strip() or not aluno.strip():
