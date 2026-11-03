@@ -79,7 +79,7 @@ with col_form:
                     "Nota Final": nota_final
                 }])
                 
-                # Re-lê os dados antes de gravar para evitar sobrescrever registros existentes
+                # Re-lê os dados antes de gravar para evitar sobrescrever registos
                 dados_mais_recentes = carregar_dados()
                 df_atualizado = pd.concat([dados_mais_recentes, novo_voto], ignore_index=True)
                 
@@ -100,4 +100,38 @@ with col_placar:
         else:
             df_exibicao = df_votos[df_votos["Série/Ano"].isin(turmas)].copy()
             
-        st.write("**Ranking por
+        st.write("**Ranking por Média Geral:**")
+        
+        # Converte colunas numéricas
+        df_exibicao["Nota Final"] = pd.to_numeric(df_exibicao["Nota Final"], errors="coerce")
+        df_exibicao["Criatividade"] = pd.to_numeric(df_exibicao["Criatividade"], errors="coerce")
+        
+        # Agrupa calculando Média Final, Qtd de Votos e Média de Criatividade
+        ranking = df_exibicao.groupby(["Série/Ano", "Aluno"]).agg(
+            Media_Final=("Nota Final", "mean"),
+            Qtd_Votos=("Nota Final", "count"),
+            Media_Criatividade=("Criatividade", "mean")
+        ).reset_index()
+        
+        # Ordenação para critério de desempate
+        ranking = ranking.sort_values(
+            by=["Media_Final", "Qtd_Votos", "Media_Criatividade"], 
+            ascending=[False, False, False]
+        ).reset_index(drop=True)
+        
+        # Formata e exibe
+        ranking_exibicao = pd.DataFrame({
+            "Série/Ano": ranking["Série/Ano"],
+            "Aluno": ranking["Aluno"],
+            "Média Final": ranking["Media_Final"].round(2),
+            "Nº Avaliações": ranking["Qtd_Votos"],
+            "Média Criatividade (Desempate)": ranking["Media_Criatividade"].round(2)
+        })
+        
+        ranking_exibicao.index = ranking_exibicao.index + 1
+        st.dataframe(ranking_exibicao, use_container_width=True)
+        
+        with st.expander("Ver todos os lançamentos detalhados"):
+            st.dataframe(df_exibicao, use_container_width=True)
+    else:
+        st.info("Nenhum voto registrado ainda na planilha.")
