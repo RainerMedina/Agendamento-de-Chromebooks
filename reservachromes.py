@@ -22,7 +22,7 @@ header {visibility: hidden;}
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 2. CONEXÃO DIRETA COM GOOGLE SHEETS (GSPREAD NATIVO)
+# 2. CONEXÃO DIRETA COM GOOGLE SHEETS
 # =========================================================
 @st.cache_resource
 def conectar_gsheets():
@@ -103,7 +103,6 @@ def remover_reserva_por_id(id_reserva):
         st.error(f"Erro ao remover reserva: {e}")
         return False
 
-# Lista de horários padrão para seleções sem falhas no frontend
 HORARIOS_DISPONIVEIS = [
     "07:00", "07:50", "08:40", "09:30", "10:40", "11:30", "12:20",
     "13:10", "14:00", "14:50", "15:40", "16:30", "17:20", "18:10", "19:00"
@@ -141,14 +140,15 @@ with aba_chromebook:
         col1, col2 = st.columns(2)
         
         with col1:
-            prof_chrome = st.text_input("Nome do Professor / Solicitante*", key="c_prof")
-            email_chrome = st.text_input("E-mail institucional*", key="c_email")
+            # Usando text_area de linha única para forçar a renderização do HTML sem dependências dinâmicas de text_input
+            prof_chrome = st.text_area("Nome do Professor / Solicitante*", height=68, key="c_prof_ta")
+            email_chrome = st.text_area("E-mail institucional*", height=68, key="c_email_ta")
             unidade_chrome = st.selectbox("Unidade / Bloco*", [
                 "Unidade Play", "Bloco 2", "Bloco 3", "Bloco 7"
             ], key="c_unidade")
             
         with col2:
-            data_chrome = st.text_input("Data do uso (AAAA-MM-DD)*", value=str(date.today()), key="c_data")
+            data_chrome = st.text_area("Data do uso (Exemplo: 2026-11-04)*", height=68, value=str(date.today()), key="c_data_ta")
             col_h1, col_h2 = st.columns(2)
             with col_h1:
                 inicio_chrome = st.selectbox("Horário Início*", HORARIOS_DISPONIVEIS, index=1, key="c_inicio")
@@ -160,16 +160,20 @@ with aba_chromebook:
         submit_chrome = st.form_submit_button("Confirmar Reserva de Chromebooks")
         
     if submit_chrome:
-        if not prof_chrome or not email_chrome:
+        prof_chrome_clean = prof_chrome.strip()
+        email_chrome_clean = email_chrome.strip()
+        data_chrome_clean = data_chrome.strip()
+        
+        if not prof_chrome_clean or not email_chrome_clean:
             st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail).")
         else:
             id_reserva = f"CHR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
             dados = {
                 "id": str(id_reserva),
-                "professor": prof_chrome,
-                "email": email_chrome.strip().lower(),
+                "professor": prof_chrome_clean,
+                "email": email_chrome_clean.lower(),
                 "unidade": unidade_chrome,
-                "data": str(data_chrome),
+                "data": str(data_chrome_clean),
                 "inicio": str(inicio_chrome),
                 "fim": str(fim_chrome),
                 "quantidade": int(qtd_chrome),
@@ -189,10 +193,10 @@ with aba_auditorio:
         col1, col2 = st.columns(2)
         
         with col1:
-            prof_aud = st.text_input("Nome do Solicitante / Responsável*", key="a_prof")
-            email_aud = st.text_input("E-mail institucional*", key="a_email")
-            unidade_aud = st.text_input("Local*", value="Auditório GDV", disabled=True, key="a_unidade")
-            data_aud = st.text_input("Data do Evento / Aula (AAAA-MM-DD)*", value=str(date.today()), key="a_data")
+            prof_aud = st.text_area("Nome do Solicitante / Responsável*", height=68, key="a_prof_ta")
+            email_aud = st.text_area("E-mail institucional*", height=68, key="a_email_ta")
+            st.selectbox("Local*", ["Auditório GDV"], disabled=True, key="a_unidade_sb")
+            data_aud = st.text_area("Data do Evento / Aula (Exemplo: 2026-11-04)*", height=68, value=str(date.today()), key="a_data_ta")
             
             col_ah1, col_ah2 = st.columns(2)
             with col_ah1:
@@ -216,7 +220,11 @@ with aba_auditorio:
         submit_aud = st.form_submit_button("Confirmar Reserva do Auditório")
 
     if submit_aud:
-        if not prof_aud or not email_aud:
+        prof_aud_clean = prof_aud.strip()
+        email_aud_clean = email_aud.strip()
+        data_aud_clean = data_aud.strip()
+        
+        if not prof_aud_clean or not email_aud_clean:
             st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail).")
         else:
             id_reserva_aud = f"AUD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -225,10 +233,10 @@ with aba_auditorio:
             
             dados_aud = {
                 "id": str(id_reserva_aud),
-                "professor": prof_aud,
-                "email": email_aud.strip().lower(),
+                "professor": prof_aud_clean,
+                "email": email_aud_clean.lower(),
                 "unidade": "Auditório GDV",
-                "data": str(data_aud),
+                "data": str(data_aud_clean),
                 "inicio": str(inicio_aud),
                 "fim": str(fim_aud),
                 "quantidade": 1,
@@ -274,14 +282,33 @@ with aba_cancelar:
     st.subheader("❌ Cancelar Agendamento")
     st.caption("Digite o seu e-mail institucional para visualizar os seus agendamentos ativos e realizar o cancelamento.")
 
-    email_busca = st.text_input("Informe o seu E-mail Institucional*", key="busca_email_cancelar")
+    email_busca = st.text_area("Informe o seu E-mail Institucional*", height=68, key="busca_email_cancelar_ta")
+    email_busca_clean = email_busca.strip().lower()
     
-    if email_busca:
+    if email_busca_clean:
         df_todas = carregar_dados_planilha()
         
         if not df_todas.empty and "email" in df_todas.columns:
             df_todas['email_norm'] = df_todas['email'].astype(str).str.strip().str.lower()
-            df_meus = df_todas[df_todas['email_norm'] == email_busca.strip().lower()]
+            df_meus = df_todas[df_todas['email_norm'] == email_busca_clean]
             
             if df_meus.empty:
                 st.warning("Nenhum agendamento encontrado para este e-mail.")
+            else:
+                st.success(f"Encontrado(s) {len(df_meus)} agendamento(s):")
+                
+                opcoes_reserva = {}
+                for _, row in df_meus.iterrows():
+                    rotulo = f"📅 {row.get('data','')} | ⏰ {row.get('inicio','')} às {row.get('fim','')} | 📍 {row.get('unidade','')}"
+                    opcoes_reserva[rotulo] = str(row.get('id',''))
+                
+                reserva_selecionada = st.selectbox(
+                    "Selecione a reserva que deseja cancelar:", 
+                    options=list(opcoes_reserva.keys())
+                )
+                
+                if st.button("🗑️ Confirmar Cancelamento da Reserva Selecionada", type="primary"):
+                    id_para_remover = opcoes_reserva[reserva_selecionada]
+                    if remover_reserva_por_id(id_para_remover):
+                        st.success("Reserva cancelada com sucesso!")
+                        st.rerun()
