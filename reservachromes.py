@@ -285,17 +285,3 @@ with aba_cancelar:
             
             if df_meus.empty:
                 st.warning("Nenhum agendamento encontrado para este e-mail.")
-            else:
-                st.success(f"Encontrado(s) {len(df_meus)} agendamento(s):")
-                
-                opcoes_reserva = {}
-                for _, row in df_meus.iterrows():
-                    rotulo = f"📅 {row.get('data','')} | ⏰ {row.get('inicio','')} às {row.get('fim','')} | 📍 {row.get('unidade','')}"
-                    opcoes_reserva[rotulo] = str(row.get('id',''))
-                
-                reserva_selecionada = st.selectbox(
-                    "Selecione a reserva que deseja cancelar:", 
-                    options=list(opcoes_reserva.keys())
-                )
-                
-                if st.button("
