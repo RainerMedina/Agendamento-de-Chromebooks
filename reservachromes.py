@@ -1,7 +1,8 @@
 import streamlit as st
 from datetime import datetime, date
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
+import gspread
+from google.oauth2.service_account import Credentials
 
 # =========================================================
 # 1. CONFIGURAÇÃO DA PÁGINA
@@ -12,7 +13,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilo para ocultar menus padrão
 st.markdown("""
 <style>
 #MainMenu {visibility: hidden;}
@@ -21,46 +21,89 @@ header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-# Conexão com Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+# =========================================================
+# 2. CONEXÃO DIRETA COM GOOGLE SHEETS (SEM COMPONENTES ADICIONAIS)
+# =========================================================
+@st.cache_resource
+def conectar_gsheets():
+    try:
+        # Puxa credenciais dos secrets
+        creds_dict = st.secrets["connections"]["gsheets"]
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        client = gspread.authorize(credentials)
+        
+        # Abre a planilha pelo URL ou ID presente nas secrets
+        spreadsheet_url = creds_dict.get("spreadsheet", "")
+        if spreadsheet_url:
+            sheet = client.open_by_url(spreadsheet_url).sheet1
+        else:
+            sheet = client.openall()[0].sheet1
+        return sheet
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Google Sheets: {e}")
+        return None
 
-# =========================================================
-# 2. FUNÇÕES PARA GOOGLE SHEETS
-# =========================================================
+sheet = conectar_gsheets()
+
 @st.cache_data(ttl=10)
 def carregar_dados_planilha():
+    if sheet is None:
+        return pd.DataFrame()
     try:
-        df = conn.read(ttl=10)
-        return df if df is not None else pd.DataFrame()
+        records = sheet.get_all_records()
+        return pd.DataFrame(records)
     except Exception:
         return pd.DataFrame()
 
 def salvar_reserva(nova_reserva):
+    if sheet is None:
+        return False
     try:
-        df_atual = conn.read(ttl=0)
-        df_novo = pd.DataFrame([nova_reserva])
-        df_final = pd.concat([df_atual, df_novo], ignore_index=True)
-        conn.update(worksheet="Página1", data=df_final)
+        # Garante a ordem correta das colunas na linha
+        df_tmp = carregar_dados_planilha()
+        headers = sheet.row_values(1) if not df_tmp.empty else ["id", "professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"]
+        
+        if not headers:
+            headers = ["id", "professor", "email", "unidade", "data", "inicio", "fim", "quantidade", "obs"]
+            sheet.append_row(headers)
+            
+        linha = [nova_reserva.get(h, "") for h in headers]
+        sheet.append_row(linha)
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar na planilha: {e}")
+        st.error(f"Erro ao salvar reserva: {e}")
         return False
 
 def remover_reserva_por_id(id_reserva):
+    if sheet is None:
+        return False
     try:
-        df_atual = conn.read(ttl=0)
-        if df_atual.empty:
+        data = sheet.get_all_values()
+        if not data or len(data) <= 1:
             return False
+            
+        headers = data[0]
+        if "id" not in headers:
+            return False
+            
+        id_col_idx = headers.index("id")
+        row_to_delete = None
         
-        df_atual['id'] = df_atual['id'].astype(str).str.strip()
-        df_atualizado = df_atual[df_atual['id'] != str(id_reserva).strip()]
-        
-        conn.update(worksheet="Página1", data=df_atualizado)
-        st.cache_data.clear()
-        return True
+        for idx, row in enumerate(data[1:], start=2):
+            if len(row) > id_col_idx and str(row[id_col_idx]).strip() == str(id_reserva).strip():
+                row_to_delete = idx
+                break
+                
+        if row_to_delete:
+            sheet.delete_rows(row_to_delete)
+            st.cache_data.clear()
+            return True
+        return False
     except Exception as e:
-        st.error(f"Erro ao remover a reserva: {e}")
+        st.error(f"Erro ao remover reserva: {e}")
         return False
 
 # =========================================================
@@ -222,7 +265,7 @@ with aba_minhas_reservas:
         )
 
 # =========================================================
-# ABA 4: CANCELAMENTO DINÂMICO
+# ABA 4: CANCELAMENTO DINÂMICO POR E-MAIL
 # =========================================================
 with aba_cancelar:
     st.subheader("❌ Cancelar Agendamento")
