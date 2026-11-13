@@ -43,6 +43,17 @@ def aplicar_imagem_fundo(caminho):
             'border-radius: 12px;'
             'padding: 0.5rem;'
             '}'
+            '[data-testid="stAlert"] {'
+            'background-color: #fff3cd !important;'
+            'border: 1px solid #ffc107 !important;'
+            'border-radius: 10px !important;'
+            'opacity: 1 !important;'
+            '}'
+            '[data-testid="stAlert"] p {'
+            'color: #856404 !important;'
+            'font-weight: 600 !important;'
+            'text-shadow: none !important;'
+            '}'
             'label, p, h1, h2, h3, .stMarkdown {'
             'text-shadow: 0px 1px 3px rgba(255, 255, 255, 0.95);'
             '}'
@@ -82,7 +93,7 @@ def conectar_gsheets():
             return client.open_by_url(url).sheet1
         return client.openall()[0].sheet1
     except Exception as e:
-        st.error(f"Erro ao conectar ao Google Sheets: {e}")
+        st.warning(f"Erro ao conectar ao Google Sheets: {e}", icon="⚠️")
         return None
 
 sheet = conectar_gsheets()
@@ -202,7 +213,7 @@ def salvar_reserva(nova):
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar reserva: {e}")
+        st.warning(f"Erro ao salvar reserva: {e}", icon="⚠️")
         return False
 
 def remover_reserva_por_id(id_reserva):
@@ -222,7 +233,7 @@ def remover_reserva_por_id(id_reserva):
                     return True
         return False
     except Exception as e:
-        st.error(f"Erro ao remover reserva: {e}")
+        st.warning(f"Erro ao remover reserva: {e}", icon="⚠️")
         return False
 
 st.markdown(
@@ -314,19 +325,27 @@ with aba_chr:
         f_str = fim_c.strftime("%H:%M")
 
         if not p_clean or not e_clean:
-            st.error("Preencha Nome e E-mail principal.")
+            st.warning(
+                "Preencha Nome e E-mail principal.",
+                icon="⚠️"
+            )
         elif not validar_email_gdv(e_clean):
-            st.error(
+            st.warning(
                 "E-mail principal deve terminar com "
-                "@gdv.com.br ou @gdv.pro.br."
+                "@gdv.com.br ou @gdv.pro.br.",
+                icon="⚠️"
             )
         elif cp_clean and not validar_email_gdv(cp_clean):
-            st.error(
+            st.warning(
                 "E-mail em copia deve terminar com "
-                "@gdv.com.br ou @gdv.pro.br."
+                "@gdv.com.br ou @gdv.pro.br.",
+                icon="⚠️"
             )
         elif ini_c >= fim_c:
-            st.error("Horario fim deve ser maior que inicio.")
+            st.warning(
+                "Horario fim deve ser maior que inicio.",
+                icon="⚠️"
+            )
         else:
             ts = datetime.now().strftime("%Y%m%d%H%M%S")
             id_res = f"CHR-{ts}"
@@ -350,7 +369,10 @@ with aba_chr:
             }
             bloq, mot = verificar_conflito(dados, "CHROMEBOOK")
             if bloq:
-                st.warning(f"⚠️ Reserva nao realizada: {mot}")
+                st.warning(
+                    f"Reserva nao realizada: {mot}",
+                    icon="⚠️"
+                )
             else:
                 with st.spinner("Registrando reserva..."):
                     if salvar_reserva(dados):
@@ -452,19 +474,27 @@ with aba_aud:
         f_str = fim_a.strftime("%H:%M")
 
         if not p_clean or not e_clean:
-            st.error("Preencha Nome e E-mail principal.")
+            st.warning(
+                "Preencha Nome e E-mail principal.",
+                icon="⚠️"
+            )
         elif not validar_email_gdv(e_clean):
-            st.error(
+            st.warning(
                 "E-mail principal deve terminar com "
-                "@gdv.com.br ou @gdv.pro.br."
+                "@gdv.com.br ou @gdv.pro.br.",
+                icon="⚠️"
             )
         elif cp_clean and not validar_email_gdv(cp_clean):
-            st.error(
+            st.warning(
                 "E-mail em copia deve terminar com "
-                "@gdv.com.br ou @gdv.pro.br."
+                "@gdv.com.br ou @gdv.pro.br.",
+                icon="⚠️"
             )
         elif ini_a >= fim_a:
-            st.error("Horario fim deve ser maior que inicio.")
+            st.warning(
+                "Horario fim deve ser maior que inicio.",
+                icon="⚠️"
+            )
         else:
             ts = datetime.now().strftime("%Y%m%d%H%M%S")
             id_aud = f"AUD-{ts}"
@@ -491,7 +521,10 @@ with aba_aud:
             }
             bloq, mot = verificar_conflito(dados_a, "AUDITORIO")
             if bloq:
-                st.warning(f"⚠️ Reserva nao realizada: {mot}")
+                st.warning(
+                    f"Reserva nao realizada: {mot}",
+                    icon="⚠️"
+                )
             else:
                 with st.spinner("Registrando reserva..."):
                     if salvar_reserva(dados_a):
@@ -515,7 +548,7 @@ with aba_painel:
         st.rerun()
     df_res = carregar_dados_planilha()
     if df_res.empty:
-        st.info("Nenhuma reserva registrada no momento.")
+        st.warning("Nenhuma reserva registrada no momento.", icon="⚠️")
     else:
         desejadas = [
             "professor", "unidade", "data",
@@ -574,10 +607,14 @@ with aba_canc:
                 (df_t["em"] == busca) | (df_t["cp"] == busca)
             ]
             if meus.empty:
-                st.warning("Nenhum agendamento encontrado.")
+                st.warning(
+                    "Nenhum agendamento encontrado.",
+                    icon="⚠️"
+                )
             else:
                 st.success(
-                    f"Encontrado(s) {len(meus)} agendamento(s):"
+                    f"Encontrado(s) {len(meus)} agendamento(s):",
+                    icon="✅"
                 )
                 opcoes = {}
                 for _, r in meus.iterrows():
