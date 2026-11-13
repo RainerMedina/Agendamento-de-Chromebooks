@@ -3,9 +3,6 @@ from datetime import datetime, date
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 # =========================================================
 # 1. CONFIGURAÇÃO DA PÁGINA
@@ -24,9 +21,9 @@ header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-# Exibe mensagens persistentes após st.rerun()
+# Exibe mensagem persistente no topo após st.rerun()
 if "msg_sucesso" in st.session_state:
-    st.success(st.session_state["msg_sucesso"])
+    st.success(st.session_state["msg_sucesso"], icon="✅")
     st.toast(st.session_state["msg_sucesso"], icon="✅")
     del st.session_state["msg_sucesso"]
 
@@ -129,71 +126,7 @@ def verificar_duplicidade_ou_conflito(nova_reserva, tipo_recurso):
     return False, ""
 
 # =========================================================
-# 4. ENVIO DE E-MAIL DE CONFIRMAÇÃO
-# =========================================================
-def enviar_email_confirmacao(dados_reserva, tipo_recurso):
-    if "email" not in st.secrets:
-        return False, "Credenciais de e-mail não configuradas no secrets.toml."
-
-    try:
-        remetente = st.secrets["email"]["remetente"]
-        senha_app = st.secrets["email"]["senha_app"]
-        destinatario = dados_reserva["email"]
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"✅ Confirmação de Reserva ({dados_reserva['id']}) - Colégio GDV"
-        msg["From"] = f"Portal de Reservas GDV <{remetente}>"
-        msg["To"] = destinatario
-
-        corpo_html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-            <h2 style="color: #1E3A8A;">Confirmação de Agendamento - Colégio GDV</h2>
-            <p>Olá, <strong>{dados_reserva['professor']}</strong>!</p>
-            <p>Sua reserva de <strong>{tipo_recurso}</strong> foi registrada com sucesso no sistema. Confira os detalhes abaixo:</p>
-            <table style="border-collapse: collapse; width: 100%; max-width: 500px; margin: 16px 0;">
-                <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Protocolo:</strong></td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['id']}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Local / Unidade:</strong></td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['unidade']}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Data:</strong></td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['data']}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Horário:</strong></td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['inicio']} às {dados_reserva['fim']}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Quantidade:</strong></td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['quantidade']}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Observações:</strong></td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['obs']}</td>
-                </tr>
-            </table>
-            <p style="font-size: 12px; color: #666;">Caso precise cancelar, acesse a aba <em>Cancelar Reserva</em> no Portal utilizando este mesmo e-mail.</p>
-        </body>
-        </html>
-        """
-
-        msg.attach(MIMEText(corpo_html, "html"))
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(remetente, senha_app)
-            server.sendmail(remetente, destinatario, msg.as_string())
-
-        return True, ""
-    except Exception as e:
-        return False, str(e)
-
-# =========================================================
-# 5. OPERAÇÕES NA PLANILHA
+# 4. OPERAÇÕES NA PLANILHA
 # =========================================================
 def salvar_reserva(nova_reserva):
     if sheet is None:
@@ -249,7 +182,7 @@ HORARIOS_DISPONIVEIS = [
 ]
 
 # =========================================================
-# 6. CABEÇALHO DA APLICAÇÃO
+# 5. CABEÇALHO DA APLICAÇÃO
 # =========================================================
 col_logo, col_titulo = st.columns([1, 4])
 
@@ -331,13 +264,12 @@ with aba_chromebook:
             if bloqueado:
                 st.warning(f"⚠️ Reserva não realizada: {motivo}")
             else:
-                with st.spinner("Registrando reserva e enviando confirmação por e-mail..."):
+                with st.spinner("Registrando reserva na planilha..."):
                     if salvar_reserva(dados):
-                        email_ok, erro_email = enviar_email_confirmacao(dados, "Chromebooks")
-                        if email_ok:
-                            st.session_state["msg_sucesso"] = f"Reserva de Chromebooks ({id_reserva}) confirmada! Enviamos um comprovante para {email_chrome_clean}."
-                        else:
-                            st.session_state["msg_sucesso"] = f"Reserva de Chromebooks ({id_reserva}) confirmada! (Aviso: não foi possível enviar o e-mail: {erro_email})"
+                        st.session_state["msg_sucesso"] = (
+                            f"Reserva de {qtd_chrome} Chromebooks ({id_reserva}) realizada com sucesso para "
+                            f"{data_chrome_clean}, das {inicio_chrome} às {fim_chrome} ({unidade_chrome})!"
+                        )
                         st.rerun()
 
 # =========================================================
@@ -406,13 +338,12 @@ with aba_auditorio:
             if bloqueado:
                 st.warning(f"⚠️ Reserva não realizada: {motivo}")
             else:
-                with st.spinner("Registrando reserva e enviando confirmação por e-mail..."):
+                with st.spinner("Registrando reserva na planilha..."):
                     if salvar_reserva(dados_aud):
-                        email_ok, erro_email = enviar_email_confirmacao(dados_aud, "Auditório GDV")
-                        if email_ok:
-                            st.session_state["msg_sucesso"] = f"Reserva do Auditório ({id_reserva_aud}) confirmada! Enviamos um comprovante para {email_aud_clean}."
-                        else:
-                            st.session_state["msg_sucesso"] = f"Reserva do Auditório ({id_reserva_aud}) confirmada! (Aviso: não foi possível enviar o e-mail: {erro_email})"
+                        st.session_state["msg_sucesso"] = (
+                            f"Reserva do Auditório GDV ({id_reserva_aud}) realizada com sucesso para "
+                            f"{data_aud_clean}, das {inicio_aud} às {fim_aud}!"
+                        )
                         st.rerun()
 
 # =========================================================
