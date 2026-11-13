@@ -3,6 +3,9 @@ from datetime import datetime, date
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # =========================================================
 # 1. CONFIGURAÇÃO DA PÁGINA
@@ -20,6 +23,12 @@ footer {visibility: hidden;}
 header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
+
+# Exibe mensagens persistentes após st.rerun()
+if "msg_sucesso" in st.session_state:
+    st.success(st.session_state["msg_sucesso"])
+    st.toast(st.session_state["msg_sucesso"], icon="✅")
+    del st.session_state["msg_sucesso"]
 
 # =========================================================
 # 2. CONEXÃO DIRETA COM GOOGLE SHEETS
@@ -55,6 +64,137 @@ def carregar_dados_planilha():
     except Exception:
         return pd.DataFrame()
 
+# =========================================================
+# 3. VALIDAÇÃO DE DUPLICIDADE, CONFLITOS E ESTOQUE (90)
+# =========================================================
+TOTAL_CHROMEBOOKS_ESCOLA = 90
+
+def verificar_duplicidade_ou_conflito(nova_reserva, tipo_recurso):
+    """
+    Retorna (True, motivo) se houver duplicidade, conflito de horário ou falta de estoque.
+    Retorna (False, "") se estiver livre para reservar.
+    """
+    try:
+        records = sheet.get_all_records()
+        df = pd.DataFrame(records)
+    except Exception:
+        df = carregar_dados_planilha()
+
+    if df.empty:
+        return False, ""
+
+    df["data_str"] = df["data"].astype(str).str.strip()
+    df["inicio_str"] = df["inicio"].astype(str).str.strip()
+    df["fim_str"] = df["fim"].astype(str).str.strip()
+    df["email_str"] = df["email"].astype(str).str.strip().str.lower()
+    df["unidade_str"] = df["unidade"].astype(str).str.strip()
+    df["obs_str"] = df["obs"].astype(str)
+
+    mesmo_dia = df[df["data_str"] == str(nova_reserva["data"]).strip()]
+    if mesmo_dia.empty:
+        return False, ""
+
+    # 1. Bloqueio de reserva idêntica (clique duplo / reenvio)
+    duplicada = mesmo_dia[
+        (mesmo_dia["email_str"] == nova_reserva["email"]) &
+        (mesmo_dia["unidade_str"] == nova_reserva["unidade"]) &
+        (mesmo_dia["inicio_str"] == nova_reserva["inicio"]) &
+        (mesmo_dia["fim_str"] == nova_reserva["fim"])
+    ]
+    if not duplicada.empty:
+        return True, "Você já possui uma reserva idêntica cadastrada para esta data, local e horário."
+
+    # 2. Verificação de estoque máximo de 90 Chromebooks no mesmo intervalo
+    if tipo_recurso == "CHROMEBOOK":
+        chromes_dia = mesmo_dia[mesmo_dia["obs_str"].str.contains(r"\[CHROMEBOOK\]", regex=True)]
+        qtd_ocupada = 0
+        for _, row in chromes_dia.iterrows():
+            if nova_reserva["inicio"] < row["fim_str"] and nova_reserva["fim"] > row["inicio_str"]:
+                try:
+                    qtd_ocupada += int(row["quantidade"])
+                except (ValueError, TypeError):
+                    pass
+
+        disponiveis = TOTAL_CHROMEBOOKS_ESCOLA - qtd_ocupada
+        if nova_reserva["quantidade"] > disponiveis:
+            return True, f"Estoque insuficiente para este horário. Já existem {qtd_ocupada} Chromebooks reservados (restam {max(0, disponiveis)} de {TOTAL_CHROMEBOOKS_ESCOLA})."
+
+    # 3. Bloqueio de sobreposição de horário no Auditório (espaço único)
+    if tipo_recurso == "AUDITORIO":
+        aud_dia = mesmo_dia[mesmo_dia["unidade_str"] == "Auditório GDV"]
+        for _, row in aud_dia.iterrows():
+            if nova_reserva["inicio"] < row["fim_str"] and nova_reserva["fim"] > row["inicio_str"]:
+                return True, f"O Auditório já está reservado neste intervalo ({row['inicio_str']} às {row['fim_str']}) por {row['professor']}."
+
+    return False, ""
+
+# =========================================================
+# 4. ENVIO DE E-MAIL DE CONFIRMAÇÃO
+# =========================================================
+def enviar_email_confirmacao(dados_reserva, tipo_recurso):
+    if "email" not in st.secrets:
+        return False, "Credenciais de e-mail não configuradas no secrets.toml."
+
+    try:
+        remetente = st.secrets["email"]["remetente"]
+        senha_app = st.secrets["email"]["senha_app"]
+        destinatario = dados_reserva["email"]
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"✅ Confirmação de Reserva ({dados_reserva['id']}) - Colégio GDV"
+        msg["From"] = f"Portal de Reservas GDV <{remetente}>"
+        msg["To"] = destinatario
+
+        corpo_html = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+            <h2 style="color: #1E3A8A;">Confirmação de Agendamento - Colégio GDV</h2>
+            <p>Olá, <strong>{dados_reserva['professor']}</strong>!</p>
+            <p>Sua reserva de <strong>{tipo_recurso}</strong> foi registrada com sucesso no sistema. Confira os detalhes abaixo:</p>
+            <table style="border-collapse: collapse; width: 100%; max-width: 500px; margin: 16px 0;">
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Protocolo:</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['id']}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Local / Unidade:</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['unidade']}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Data:</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['data']}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Horário:</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['inicio']} às {dados_reserva['fim']}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Quantidade:</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['quantidade']}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Observações:</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{dados_reserva['obs']}</td>
+                </tr>
+            </table>
+            <p style="font-size: 12px; color: #666;">Caso precise cancelar, acesse a aba <em>Cancelar Reserva</em> no Portal utilizando este mesmo e-mail.</p>
+        </body>
+        </html>
+        """
+
+        msg.attach(MIMEText(corpo_html, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(remetente, senha_app)
+            server.sendmail(remetente, destinatario, msg.as_string())
+
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+# =========================================================
+# 5. OPERAÇÕES NA PLANILHA
+# =========================================================
 def salvar_reserva(nova_reserva):
     if sheet is None:
         return False
@@ -109,7 +249,7 @@ HORARIOS_DISPONIVEIS = [
 ]
 
 # =========================================================
-# 3. CABEÇALHO DA APLICAÇÃO
+# 6. CABEÇALHO DA APLICAÇÃO
 # =========================================================
 col_logo, col_titulo = st.columns([1, 4])
 
@@ -136,11 +276,10 @@ aba_chromebook, aba_auditorio, aba_minhas_reservas, aba_cancelar = st.tabs([
 with aba_chromebook:
     st.subheader("💻 Agendamento de Carrinho de Chromebooks")
     
-    with st.form("form_chromebook"):
+    with st.form("form_chromebook", clear_on_submit=False):
         col1, col2 = st.columns(2)
         
         with col1:
-            # Usando text_area de linha única para forçar a renderização do HTML sem dependências dinâmicas de text_input
             prof_chrome = st.text_area("Nome do Professor / Solicitante*", height=68, key="c_prof_ta")
             email_chrome = st.text_area("E-mail institucional*", height=68, key="c_email_ta")
             unidade_chrome = st.selectbox("Unidade / Bloco*", [
@@ -154,24 +293,32 @@ with aba_chromebook:
                 inicio_chrome = st.selectbox("Horário Início*", HORARIOS_DISPONIVEIS, index=1, key="c_inicio")
             with col_h2:
                 fim_chrome = st.selectbox("Horário Fim*", HORARIOS_DISPONIVEIS, index=2, key="c_fim")
-            qtd_chrome = st.number_input("Quantidade de Chromebooks*", min_value=1, max_value=50, value=30, key="c_qtd")
+            qtd_chrome = st.number_input(
+                "Quantidade de Chromebooks*", 
+                min_value=1, 
+                max_value=TOTAL_CHROMEBOOKS_ESCOLA, 
+                value=30, 
+                key="c_qtd"
+            )
             
         obs_chrome = st.text_area("Observações / Solicitações especiais", key="c_obs")
         submit_chrome = st.form_submit_button("Confirmar Reserva de Chromebooks")
         
     if submit_chrome:
         prof_chrome_clean = prof_chrome.strip()
-        email_chrome_clean = email_chrome.strip()
+        email_chrome_clean = email_chrome.strip().lower()
         data_chrome_clean = data_chrome.strip()
         
         if not prof_chrome_clean or not email_chrome_clean:
             st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail).")
+        elif inicio_chrome >= fim_chrome:
+            st.error("O horário de término deve ser maior que o horário de início.")
         else:
             id_reserva = f"CHR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
             dados = {
                 "id": str(id_reserva),
                 "professor": prof_chrome_clean,
-                "email": email_chrome_clean.lower(),
+                "email": email_chrome_clean,
                 "unidade": unidade_chrome,
                 "data": str(data_chrome_clean),
                 "inicio": str(inicio_chrome),
@@ -179,9 +326,19 @@ with aba_chromebook:
                 "quantidade": int(qtd_chrome),
                 "obs": f"[CHROMEBOOK] {obs_chrome}" if obs_chrome else "[CHROMEBOOK]"
             }
-            if salvar_reserva(dados):
-                st.success("Reserva de Chromebooks realizada com sucesso!")
-                st.rerun()
+
+            bloqueado, motivo = verificar_duplicidade_ou_conflito(dados, "CHROMEBOOK")
+            if bloqueado:
+                st.warning(f"⚠️ Reserva não realizada: {motivo}")
+            else:
+                with st.spinner("Registrando reserva e enviando confirmação por e-mail..."):
+                    if salvar_reserva(dados):
+                        email_ok, erro_email = enviar_email_confirmacao(dados, "Chromebooks")
+                        if email_ok:
+                            st.session_state["msg_sucesso"] = f"Reserva de Chromebooks ({id_reserva}) confirmada! Enviamos um comprovante para {email_chrome_clean}."
+                        else:
+                            st.session_state["msg_sucesso"] = f"Reserva de Chromebooks ({id_reserva}) confirmada! (Aviso: não foi possível enviar o e-mail: {erro_email})"
+                        st.rerun()
 
 # =========================================================
 # ABA 2: RESERVA DE AUDITÓRIO
@@ -189,7 +346,7 @@ with aba_chromebook:
 with aba_auditorio:
     st.subheader("🎭 Agendamento do Auditório GDV")
     
-    with st.form("form_auditorio"):
+    with st.form("form_auditorio", clear_on_submit=False):
         col1, col2 = st.columns(2)
         
         with col1:
@@ -221,11 +378,13 @@ with aba_auditorio:
 
     if submit_aud:
         prof_aud_clean = prof_aud.strip()
-        email_aud_clean = email_aud.strip()
+        email_aud_clean = email_aud.strip().lower()
         data_aud_clean = data_aud.strip()
         
         if not prof_aud_clean or not email_aud_clean:
             st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail).")
+        elif inicio_aud >= fim_aud:
+            st.error("O horário de término deve ser maior que o horário de início.")
         else:
             id_reserva_aud = f"AUD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
             detalhes_equipamentos = f"[AUDITÓRIO] Visual: {recurso_visuo} | Mics: {qtd_mic} | Som: {sistema_som}"
@@ -234,7 +393,7 @@ with aba_auditorio:
             dados_aud = {
                 "id": str(id_reserva_aud),
                 "professor": prof_aud_clean,
-                "email": email_aud_clean.lower(),
+                "email": email_aud_clean,
                 "unidade": "Auditório GDV",
                 "data": str(data_aud_clean),
                 "inicio": str(inicio_aud),
@@ -242,9 +401,19 @@ with aba_auditorio:
                 "quantidade": 1,
                 "obs": obs_final
             }
-            if salvar_reserva(dados_aud):
-                st.success("Reserva do Auditório confirmada com sucesso!")
-                st.rerun()
+
+            bloqueado, motivo = verificar_duplicidade_ou_conflito(dados_aud, "AUDITORIO")
+            if bloqueado:
+                st.warning(f"⚠️ Reserva não realizada: {motivo}")
+            else:
+                with st.spinner("Registrando reserva e enviando confirmação por e-mail..."):
+                    if salvar_reserva(dados_aud):
+                        email_ok, erro_email = enviar_email_confirmacao(dados_aud, "Auditório GDV")
+                        if email_ok:
+                            st.session_state["msg_sucesso"] = f"Reserva do Auditório ({id_reserva_aud}) confirmada! Enviamos um comprovante para {email_aud_clean}."
+                        else:
+                            st.session_state["msg_sucesso"] = f"Reserva do Auditório ({id_reserva_aud}) confirmada! (Aviso: não foi possível enviar o e-mail: {erro_email})"
+                        st.rerun()
 
 # =========================================================
 # ABA 3: PAINEL DE CONSULTA DE RESERVAS
@@ -310,5 +479,5 @@ with aba_cancelar:
                 if st.button("🗑️ Confirmar Cancelamento da Reserva Selecionada", type="primary"):
                     id_para_remover = opcoes_reserva[reserva_selecionada]
                     if remover_reserva_por_id(id_para_remover):
-                        st.success("Reserva cancelada com sucesso!")
+                        st.session_state["msg_sucesso"] = "Reserva cancelada com sucesso!"
                         st.rerun()
