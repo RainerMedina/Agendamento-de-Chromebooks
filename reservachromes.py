@@ -27,18 +27,19 @@ def aplicar_imagem_fundo(caminho):
             '}'
             '.block-container {'
             'background-color: transparent !important;'
-            'padding-top: 7.5rem;'
+            'padding-top: 9.5rem;'
+            'padding-bottom: 1rem;'
             'max-width: 1100px;'
             '}'
             '[data-testid="stForm"] {'
-            'background-color: rgba(255, 255, 255, 0.25);'
+            'background-color: rgba(255, 255, 255, 0.30);'
             'backdrop-filter: blur(6px);'
-            'border: 1px solid rgba(255, 255, 255, 0.5);'
+            'border: 1px solid rgba(255, 255, 255, 0.55);'
             'border-radius: 14px;'
-            'padding: 1.5rem;'
+            'padding: 1.2rem 1.5rem;'
             '}'
             '[data-testid="stDataFrame"] {'
-            'background-color: rgba(255, 255, 255, 0.90);'
+            'background-color: rgba(255, 255, 255, 0.94);'
             'border-radius: 12px;'
             'padding: 0.5rem;'
             '}'
@@ -224,7 +225,12 @@ def remover_reserva_por_id(id_reserva):
         st.error(f"Erro ao remover reserva: {e}")
         return False
 
-st.title("Portal de Reservas - GDV")
+st.markdown(
+    '<h1 style="color: #003366; margin-bottom: 0;">'
+    'Portal de Reservas - GDV'
+    '</h1>',
+    unsafe_allow_html=True
+)
 st.caption(
     "Gerenciamento integrado de Chromebooks e Auditório "
     "para professores e colaboradores."
@@ -238,23 +244,25 @@ aba_chr, aba_aud, aba_painel, aba_canc = st.tabs([
 ])
 
 with aba_chr:
-    st.subheader("💻 Agendamento de Carrinho de Chromebooks")
+    st.markdown(
+        '<h3 style="color: #003366; margin-top: 0;">'
+        '💻 Agendamento de Carrinho de Chromebooks'
+        '</h3>',
+        unsafe_allow_html=True
+    )
     with st.form("form_chromebook", clear_on_submit=False):
         c1, c2 = st.columns(2)
         with c1:
-            prof_c = st.text_area(
+            prof_c = st.text_input(
                 "Nome do Professor / Solicitante*",
-                height=68,
                 key="c_prof"
             )
-            email_c = st.text_area(
+            email_c = st.text_input(
                 "E-mail principal (@gdv.com.br ou @gdv.pro.br)*",
-                height=68,
                 key="c_email"
             )
-            copia_c = st.text_area(
+            copia_c = st.text_input(
                 "E-mail em copia (Opcional)*",
-                height=68,
                 key="c_copia"
             )
             unid_c = st.selectbox(
@@ -289,9 +297,8 @@ with aba_chr:
                 value=30,
                 key="c_qtd"
             )
-            obs_c = st.text_area(
+            obs_c = st.text_input(
                 "Observacoes / Solicitacoes especiais",
-                height=68,
                 key="c_obs"
             )
         sub_c = st.form_submit_button(
@@ -357,23 +364,25 @@ with aba_chr:
                         st.rerun()
 
 with aba_aud:
-    st.subheader("🎭 Agendamento do Auditório GDV")
+    st.markdown(
+        '<h3 style="color: #003366; margin-top: 0;">'
+        '🎭 Agendamento do Auditório GDV'
+        '</h3>',
+        unsafe_allow_html=True
+    )
     with st.form("form_auditorio", clear_on_submit=False):
         c1, c2 = st.columns(2)
         with c1:
-            prof_a = st.text_area(
+            prof_a = st.text_input(
                 "Nome do Solicitante / Responsavel*",
-                height=68,
                 key="a_prof"
             )
-            email_a = st.text_area(
+            email_a = st.text_input(
                 "E-mail principal (@gdv.com.br ou @gdv.pro.br)*",
-                height=68,
                 key="a_email"
             )
-            copia_a = st.text_area(
+            copia_a = st.text_input(
                 "E-mail em copia (Opcional)*",
-                height=68,
                 key="a_copia"
             )
             st.selectbox(
@@ -426,9 +435,8 @@ with aba_aud:
                 ],
                 key="a_som"
             )
-            obs_a = st.text_area(
+            obs_a = st.text_input(
                 "Descricao do Evento / Observacoes",
-                height=100,
                 key="a_obs"
             )
         sub_a = st.form_submit_button(
@@ -496,7 +504,12 @@ with aba_aud:
                         st.rerun()
 
 with aba_painel:
-    st.subheader("📋 Reservas Cadastradas no Sistema")
+    st.markdown(
+        '<h3 style="color: #003366; margin-top: 0;">'
+        '📋 Reservas Cadastradas no Sistema'
+        '</h3>',
+        unsafe_allow_html=True
+    )
     if st.button("🔄 Atualizar Lista de Reservas"):
         st.cache_data.clear()
         st.rerun()
@@ -528,13 +541,17 @@ with aba_painel:
         )
 
 with aba_canc:
-    st.subheader("❌ Cancelar Agendamento")
+    st.markdown(
+        '<h3 style="color: #003366; margin-top: 0;">'
+        '❌ Cancelar Agendamento'
+        '</h3>',
+        unsafe_allow_html=True
+    )
     st.caption(
         "Digite o e-mail principal ou em copia para cancelar."
     )
-    busca_raw = st.text_area(
+    busca_raw = st.text_input(
         "Informe o E-mail (Principal ou Copia)*",
-        height=68,
         key="busca_canc"
     )
     busca = busca_raw.strip().lower()
