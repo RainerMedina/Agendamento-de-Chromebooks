@@ -62,7 +62,7 @@ def carregar_dados_planilha():
         return pd.DataFrame()
 
 # =========================================================
-# 3. VALIDAÇÕES DE E-MAIL, DUPLICIDADE E ESTOQUE (90)
+# 3. VALIDAÇÕES DE E-MAIL, DATA, DUPLICIDADE E ESTOQUE (90)
 # =========================================================
 TOTAL_CHROMEBOOKS_ESCOLA = 90
 DOMINIOS_PERMITIDOS = ("@gdv.com.br", "@gdv.pro.br")
@@ -73,6 +73,16 @@ def validar_email_gdv(email_str):
     if "@" not in email_limpo or email_limpo.startswith("@"):
         return False
     return email_limpo.endswith(DOMINIOS_PERMITIDOS)
+
+def normalizar_data(valor):
+    """Converte datas em DD/MM/YYYY, DD-MM-YYYY ou YYYY-MM-DD para o padrão DD/MM/YYYY."""
+    s = str(valor).strip()
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return s
 
 def verificar_duplicidade_ou_conflito(nova_reserva, tipo_recurso):
     """
@@ -88,14 +98,15 @@ def verificar_duplicidade_ou_conflito(nova_reserva, tipo_recurso):
     if df.empty:
         return False, ""
 
-    df["data_str"] = df["data"].astype(str).str.strip()
+    df["data_norm"] = df["data"].apply(normalizar_data)
     df["inicio_str"] = df["inicio"].astype(str).str.strip()
     df["fim_str"] = df["fim"].astype(str).str.strip()
     df["email_str"] = df["email"].astype(str).str.strip().str.lower()
     df["unidade_str"] = df["unidade"].astype(str).str.strip()
     df["obs_str"] = df["obs"].astype(str)
 
-    mesmo_dia = df[df["data_str"] == str(nova_reserva["data"]).strip()]
+    data_alvo = normalizar_data(nova_reserva["data"])
+    mesmo_dia = df[df["data_norm"] == data_alvo]
     if mesmo_dia.empty:
         return False, ""
 
@@ -111,7 +122,7 @@ def verificar_duplicidade_ou_conflito(nova_reserva, tipo_recurso):
 
     # 2. Verificação de estoque máximo de 90 Chromebooks no mesmo intervalo
     if tipo_recurso == "CHROMEBOOK":
-        chromes_dia = mesmo_dia[mesmo_dia["obs_str"].str.contains(r"\[CHROMEBOOK\]", regex=True)]
+        chromes_dia = mesmo_dia[mesmo_dia["obs_str"].str.contains(r"[CHROMEBOOK]", regex=True)]
         qtd_ocupada = 0
         for _, row in chromes_dia.iterrows():
             if nova_reserva["inicio"] < row["fim_str"] and nova_reserva["fim"] > row["inicio_str"]:
@@ -147,7 +158,6 @@ def salvar_reserva(nova_reserva):
             headers = ["id", "professor", "email", "email_copia", "unidade", "data", "inicio", "fim", "quantidade", "obs"]
             sheet.append_row(headers)
         elif "email_copia" not in headers:
-            # Adiciona automaticamente a coluna email_copia caso a planilha antiga ainda não a tenha
             sheet.update_cell(1, len(headers) + 1, "email_copia")
             headers.append("email_copia")
             
@@ -228,228 +238,12 @@ with aba_chromebook:
             ], key="c_unidade")
             
         with col2:
-            data_chrome = st.text_area("Data do uso (Exemplo: 2026-11-04)*", height=68, value=str(date.today()), key="c_data_ta")
+            data_chrome_date = st.date_input(
+                "Data do uso (Clique para abrir o calendário)*",
+                value=date.today(),
+                format="DD/MM/YYYY",
+                key="c_data_cal"
+            )
             col_h1, col_h2 = st.columns(2)
             with col_h1:
-                inicio_chrome_time = st.time_input("Horário Início*", value=time(7, 50), step=300, key="c_inicio_time")
-            with col_h2:
-                fim_chrome_time = st.time_input("Horário Fim*", value=time(8, 40), step=300, key="c_fim_time")
-            qtd_chrome = st.number_input(
-                "Quantidade de Chromebooks*", 
-                min_value=1, 
-                max_value=TOTAL_CHROMEBOOKS_ESCOLA, 
-                value=30, 
-                key="c_qtd"
-            )
-            obs_chrome = st.text_area("Observações / Solicitações especiais", height=68, key="c_obs")
-            
-        submit_chrome = st.form_submit_button("Confirmar Reserva de Chromebooks")
-        
-    if submit_chrome:
-        prof_chrome_clean = prof_chrome.strip()
-        email_chrome_clean = email_chrome.strip().lower()
-        email_copia_chrome_clean = email_copia_chrome.strip().lower()
-        data_chrome_clean = data_chrome.strip()
-        inicio_chrome_str = inicio_chrome_time.strftime("%H:%M")
-        fim_chrome_str = fim_chrome_time.strftime("%H:%M")
-        
-        if not prof_chrome_clean or not email_chrome_clean:
-            st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail principal).")
-        elif not validar_email_gdv(email_chrome_clean):
-            st.error("O e-mail principal deve terminar com @gdv.com.br ou @gdv.pro.br.")
-        elif email_copia_chrome_clean and not validar_email_gdv(email_copia_chrome_clean):
-            st.error("O e-mail em cópia deve terminar com @gdv.com.br ou @gdv.pro.br.")
-        elif inicio_chrome_time >= fim_chrome_time:
-            st.error("O horário de término deve ser maior que o horário de início.")
-        else:
-            id_reserva = f"CHR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-            obs_base = f"[CHROMEBOOK] {obs_chrome}" if obs_chrome else "[CHROMEBOOK]"
-            if email_copia_chrome_clean:
-                obs_base += f" | Cópia: {email_copia_chrome_clean}"
-
-            dados = {
-                "id": str(id_reserva),
-                "professor": prof_chrome_clean,
-                "email": email_chrome_clean,
-                "email_copia": email_copia_chrome_clean,
-                "unidade": unidade_chrome,
-                "data": str(data_chrome_clean),
-                "inicio": inicio_chrome_str,
-                "fim": fim_chrome_str,
-                "quantidade": int(qtd_chrome),
-                "obs": obs_base
-            }
-
-            bloqueado, motivo = verificar_duplicidade_ou_conflito(dados, "CHROMEBOOK")
-            if bloqueado:
-                st.warning(f"⚠️ Reserva não realizada: {motivo}")
-            else:
-                with st.spinner("Registrando reserva na planilha..."):
-                    if salvar_reserva(dados):
-                        st.session_state["msg_sucesso"] = (
-                            f"Reserva de {qtd_chrome} Chromebooks ({id_reserva}) realizada com sucesso para "
-                            f"{data_chrome_clean}, das {inicio_chrome_str} às {fim_chrome_str} ({unidade_chrome})!"
-                        )
-                        st.rerun()
-
-# =========================================================
-# ABA 2: RESERVA DE AUDITÓRIO
-# =========================================================
-with aba_auditorio:
-    st.subheader("🎭 Agendamento do Auditório GDV")
-    
-    with st.form("form_auditorio", clear_on_submit=False):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            prof_aud = st.text_area("Nome do Solicitante / Responsável*", height=68, key="a_prof_ta")
-            email_aud = st.text_area("E-mail institucional principal (@gdv.com.br ou @gdv.pro.br)*", height=68, key="a_email_ta")
-            email_copia_aud = st.text_area("E-mail em cópia (Opcional - @gdv.com.br ou @gdv.pro.br)", height=68, key="a_email_copia_ta")
-            st.selectbox("Local*", ["Auditório GDV"], disabled=True, key="a_unidade_sb")
-            data_aud = st.text_area("Data do Evento / Aula (Exemplo: 2026-11-04)*", height=68, value=str(date.today()), key="a_data_ta")
-            
-            col_ah1, col_ah2 = st.columns(2)
-            with col_ah1:
-                inicio_aud_time = st.time_input("Horário Início*", value=time(7, 50), step=300, key="a_inicio_time")
-            with col_ah2:
-                fim_aud_time = st.time_input("Horário Fim*", value=time(9, 30), step=300, key="a_fim_time")
-
-        with col2:
-            st.markdown("##### 🛠️ Equipamentos Necessários")
-            recurso_visuo = st.radio("Apresentação Visual:", [
-                "Nenhum", "Projetor / DataShow", "Lousa Digital / Interativa"
-            ], key="a_visuo")
-            qtd_mic = st.slider("Quantidade de Microfones sem fio:", min_value=0, max_value=4, value=1, key="a_mic")
-            sistema_som = st.selectbox("Sistema de Som:", [
-                "Som Geral do Auditório (Mesa + Caixas Fixas)",
-                "Caixa de Som Portátil com Bluetooth",
-                "Sem necessidade de Som"
-            ], key="a_som")
-            obs_aud = st.text_area("Descrição do Evento / Observações adicionais para a TI", height=100, key="a_obs")
-
-        submit_aud = st.form_submit_button("Confirmar Reserva do Auditório")
-
-    if submit_aud:
-        prof_aud_clean = prof_aud.strip()
-        email_aud_clean = email_aud.strip().lower()
-        email_copia_aud_clean = email_copia_aud.strip().lower()
-        data_aud_clean = data_aud.strip()
-        inicio_aud_str = inicio_aud_time.strftime("%H:%M")
-        fim_aud_str = fim_aud_time.strftime("%H:%M")
-        
-        if not prof_aud_clean or not email_aud_clean:
-            st.error("Por favor, preencha os campos obrigatórios (Nome e E-mail principal).")
-        elif not validar_email_gdv(email_aud_clean):
-            st.error("O e-mail principal deve terminar com @gdv.com.br ou @gdv.pro.br.")
-        elif email_copia_aud_clean and not validar_email_gdv(email_copia_aud_clean):
-            st.error("O e-mail em cópia deve terminar com @gdv.com.br ou @gdv.pro.br.")
-        elif inicio_aud_time >= fim_aud_time:
-            st.error("O horário de término deve ser maior que o horário de início.")
-        else:
-            id_reserva_aud = f"AUD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-            detalhes_equipamentos = f"[AUDITÓRIO] Visual: {recurso_visuo} | Mics: {qtd_mic} | Som: {sistema_som}"
-            obs_final = f"{detalhes_equipamentos} | Obs: {obs_aud}" if obs_aud else detalhes_equipamentos
-            if email_copia_aud_clean:
-                obs_final += f" | Cópia: {email_copia_aud_clean}"
-            
-            dados_aud = {
-                "id": str(id_reserva_aud),
-                "professor": prof_aud_clean,
-                "email": email_aud_clean,
-                "email_copia": email_copia_aud_clean,
-                "unidade": "Auditório GDV",
-                "data": str(data_aud_clean),
-                "inicio": inicio_aud_str,
-                "fim": fim_aud_str,
-                "quantidade": 1,
-                "obs": obs_final
-            }
-
-            bloqueado, motivo = verificar_duplicidade_ou_conflito(dados_aud, "AUDITORIO")
-            if bloqueado:
-                st.warning(f"⚠️ Reserva não realizada: {motivo}")
-            else:
-                with st.spinner("Registrando reserva na planilha..."):
-                    if salvar_reserva(dados_aud):
-                        st.session_state["msg_sucesso"] = (
-                            f"Reserva do Auditório GDV ({id_reserva_aud}) realizada com sucesso para "
-                            f"{data_aud_clean}, das {inicio_aud_str} às {fim_aud_str}!"
-                        )
-                        st.rerun()
-
-# =========================================================
-# ABA 3: PAINEL DE CONSULTA DE RESERVAS
-# =========================================================
-with aba_minhas_reservas:
-    st.subheader("📋 Reservas Cadastradas no Sistema")
-    
-    if st.button("🔄 Atualizar Lista de Reservas"):
-        st.cache_data.clear()
-        st.rerun()
-        
-    df_reservas = carregar_dados_planilha()
-    
-    if df_reservas.empty:
-        st.info("Nenhuma reserva registrada no momento ou a carregar dados...")
-    else:
-        colunas_visiveis = ["professor", "unidade", "data", "inicio", "fim", "quantidade", "obs"]
-        cols_existentes = [c for c in colunas_visiveis if c in df_reservas.columns]
-        
-        df_exibicao = df_reservas[cols_existentes].copy()
-        if "data" in df_exibicao.columns:
-            df_exibicao = df_exibicao.sort_values(by="data", ascending=False)
-            
-        st.dataframe(
-            df_exibicao,
-            use_container_width=True,
-            hide_index=True,
-            height=400
-        )
-
-# =========================================================
-# ABA 4: CANCELAMENTO DINÂMICO POR E-MAIL (PRINCIPAL OU CÓPIA)
-# =========================================================
-with aba_cancelar:
-    st.subheader("❌ Cancelar Agendamento")
-    st.caption("Digite o e-mail institucional principal ou o e-mail em cópia para visualizar e cancelar os agendamentos.")
-
-    email_busca = st.text_area("Informe o E-mail Institucional (Principal ou Cópia)*", height=68, key="busca_email_cancelar_ta")
-    email_busca_clean = email_busca.strip().lower()
-    
-    if email_busca_clean:
-        df_todas = carregar_dados_planilha()
-        
-        if not df_todas.empty and "email" in df_todas.columns:
-            df_todas["email_norm"] = df_todas["email"].astype(str).str.strip().str.lower()
-            
-            if "email_copia" in df_todas.columns:
-                df_todas["email_copia_norm"] = df_todas["email_copia"].astype(str).str.strip().str.lower()
-            else:
-                df_todas["email_copia_norm"] = ""
-
-            # Filtra se o e-mail digitado for igual ao principal OU ao e-mail em cópia
-            df_meus = df_todas[
-                (df_todas["email_norm"] == email_busca_clean) |
-                (df_todas["email_copia_norm"] == email_busca_clean)
-            ]
-            
-            if df_meus.empty:
-                st.warning("Nenhum agendamento encontrado para este e-mail.")
-            else:
-                st.success(f"Encontrado(s) {len(df_meus)} agendamento(s):")
-                
-                opcoes_reserva = {}
-                for _, row in df_meus.iterrows():
-                    rotulo = f"📅 {row.get('data','')} | ⏰ {row.get('inicio','')} às {row.get('fim','')} | 📍 {row.get('unidade','')} ({row.get('professor','')})"
-                    opcoes_reserva[rotulo] = str(row.get('id',''))
-                
-                reserva_selecionada = st.selectbox(
-                    "Selecione a reserva que deseja cancelar:", 
-                    options=list(opcoes_reserva.keys())
-                )
-                
-                if st.button("🗑️ Confirmar Cancelamento da Reserva Selecionada", type="primary"):
-                    id_para_remover = opcoes_reserva[reserva_selecionada]
-                    if remover_reserva_por_id(id_para_remover):
-                        st.session_state["msg_sucesso"] = "Reserva cancelada com sucesso!"
-                        st.rerun()
+                inicio_chrome_time = st.time_input("
