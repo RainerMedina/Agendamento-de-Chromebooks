@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
@@ -11,6 +11,9 @@ st.set_page_config(
     page_icon="🏫",
     layout="wide"
 )
+
+def agora_brasilia():
+    return datetime.utcnow() - timedelta(hours=3)
 
 def aplicar_imagem_fundo(caminho):
     bg = ""
@@ -259,6 +262,10 @@ aba_chr, aba_aud, aba_painel, aba_canc = st.tabs([
     "❌ Cancelar Reserva"
 ])
 
+agora_sp = agora_brasilia()
+hoje_sp = agora_sp.date()
+hora_atual_sp = agora_sp.time().replace(second=0, microsecond=0)
+
 with aba_chr:
     st.markdown(
         '<h3 style="color: #003366; margin-top: 0;">'
@@ -294,7 +301,8 @@ with aba_chr:
         with c2:
             data_c = st.date_input(
                 "Data do uso*",
-                value=date.today(),
+                value=hoje_sp,
+                min_value=hoje_sp,
                 format="DD/MM/YYYY",
                 key="c_data"
             )
@@ -327,6 +335,10 @@ with aba_chr:
         )
 
     if sub_c:
+        agora_val = agora_brasilia()
+        hoje_val = agora_val.date()
+        hora_val = agora_val.time().replace(second=0, microsecond=0)
+
         p_clean = prof_c.strip()
         e_clean = email_c.strip().lower()
         cp_clean = copia_c.strip().lower()
@@ -351,6 +363,17 @@ with aba_chr:
                 "@gdv.com.br ou @gdv.pro.br.",
                 icon="⚠️"
             )
+        elif data_c < hoje_val:
+            st.warning(
+                "Nao e permitido reservar para uma data que ja passou.",
+                icon="⚠️"
+            )
+        elif data_c == hoje_val and ini_c <= hora_val:
+            st.warning(
+                f"Nao e permitido reservar para um horario que ja passou "
+                f"(hora atual: {hora_val.strftime('%H:%M')}).",
+                icon="⚠️"
+            )
         elif ini_c >= fim_c:
             st.warning(
                 "Horario fim deve ser maior que inicio.",
@@ -363,7 +386,7 @@ with aba_chr:
                 icon="⚠️"
             )
         else:
-            ts = datetime.now().strftime("%Y%m%d%H%M%S")
+            ts = agora_val.strftime("%Y%m%d%H%M%S")
             id_res = f"CHR-{ts}"
             obs_txt = (
                 f"[CHROMEBOOK] {obs_c}"
@@ -431,7 +454,8 @@ with aba_aud:
             )
             data_a = st.date_input(
                 "Data do Evento / Aula*",
-                value=date.today(),
+                value=hoje_sp,
+                min_value=hoje_sp,
                 format="DD/MM/YYYY",
                 key="a_data"
             )
@@ -482,6 +506,10 @@ with aba_aud:
         )
 
     if sub_a:
+        agora_val = agora_brasilia()
+        hoje_val = agora_val.date()
+        hora_val = agora_val.time().replace(second=0, microsecond=0)
+
         p_clean = prof_a.strip()
         e_clean = email_a.strip().lower()
         cp_clean = copia_a.strip().lower()
@@ -506,13 +534,24 @@ with aba_aud:
                 "@gdv.com.br ou @gdv.pro.br.",
                 icon="⚠️"
             )
+        elif data_a < hoje_val:
+            st.warning(
+                "Nao e permitido reservar para uma data que ja passou.",
+                icon="⚠️"
+            )
+        elif data_a == hoje_val and ini_a <= hora_val:
+            st.warning(
+                f"Nao e permitido reservar para um horario que ja passou "
+                f"(hora atual: {hora_val.strftime('%H:%M')}).",
+                icon="⚠️"
+            )
         elif ini_a >= fim_a:
             st.warning(
                 "Horario fim deve ser maior que inicio.",
                 icon="⚠️"
             )
         else:
-            ts = datetime.now().strftime("%Y%m%d%H%M%S")
+            ts = agora_val.strftime("%Y%m%d%H%M%S")
             id_aud = f"AUD-{ts}"
             det = (
                 f"[AUDITORIO] Visual: {visuo} | "
