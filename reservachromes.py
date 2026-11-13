@@ -113,7 +113,13 @@ def carregar_dados_planilha():
     except Exception:
         return pd.DataFrame()
 
-TOTAL_CHR = 90
+MAX_POR_CARRINHO = 30
+UNIDADES_CHR = [
+    "Unidade Play",
+    "Bloco 2",
+    "Bloco 3",
+    "Bloco 7"
+]
 DOMINIOS = ("@gdv.com.br", "@gdv.pro.br")
 COLUNAS = [
     "id", "professor", "email", "email_copia",
@@ -158,34 +164,27 @@ def verificar_conflito(nova, tipo):
     if dia.empty:
         return False, ""
 
-    dup = dia[
-        (dia["em"] == nova["email"]) &
-        (dia["un"] == nova["unidade"]) &
-        (dia["ini"] == nova["inicio"]) &
-        (dia["fim"] == nova["fim"])
-    ]
-    if not dup.empty:
-        return True, (
-            "Voce ja possui uma reserva identica cadastrada "
-            "para esta data, local e horario."
-        )
-
     if tipo == "CHROMEBOOK":
-        ocupados = 0
-        filtro = dia["ob"].str.contains("[CHROMEBOOK]", regex=False)
+        if nova["quantidade"] > MAX_POR_CARRINHO:
+            return True, (
+                f"Cada carrinho comporta no maximo "
+                f"{MAX_POR_CARRINHO} Chromebooks. "
+                f"Para mais unidades, faca outra reserva "
+                f"no mesmo horario escolhendo outra Unidade/Bloco."
+            )
+
+        filtro = (
+            dia["ob"].str.contains("[CHROMEBOOK]", regex=False) &
+            (dia["un"] == nova["unidade"])
+        )
         for _, r in dia[filtro].iterrows():
             if nova["inicio"] < r["fim"] and nova["fim"] > r["ini"]:
-                try:
-                    ocupados += int(r["quantidade"])
-                except (ValueError, TypeError):
-                    pass
-        disp = TOTAL_CHR - ocupados
-        if nova["quantidade"] > disp:
-            rest = max(0, disp)
-            return True, (
-                f"Estoque insuficiente. Ja existem {ocupados} "
-                f"Chromebooks reservados (restam {rest} de {TOTAL_CHR})."
-            )
+                return True, (
+                    f"O carrinho de {nova['unidade']} ja esta "
+                    f"reservado das {r['ini']} as {r['fim']} por "
+                    f"{r['professor']}. Escolha outra Unidade/Bloco "
+                    f"disponivel para este horario."
+                )
 
     if tipo == "AUDITORIO":
         for _, r in dia[dia["un"] == "Auditório GDV"].iterrows():
@@ -267,6 +266,11 @@ with aba_chr:
         '</h3>',
         unsafe_allow_html=True
     )
+    st.caption(
+        "Cada carrinho (Unidade/Bloco) possui no maximo 30 Chromebooks. "
+        "Precisa de mais? Faca uma nova reserva no mesmo horario "
+        "escolhendo outra Unidade/Bloco."
+    )
     with st.form("form_chromebook", clear_on_submit=False):
         c1, c2 = st.columns(2)
         with c1:
@@ -283,8 +287,8 @@ with aba_chr:
                 key="c_copia"
             )
             unid_c = st.selectbox(
-                "Unidade / Bloco*",
-                ["Unidade Play", "Bloco 2", "Bloco 3", "Bloco 7"],
+                "Unidade / Bloco (Max. 30 Chromebooks por carrinho)*",
+                UNIDADES_CHR,
                 key="c_unid"
             )
         with c2:
@@ -308,9 +312,9 @@ with aba_chr:
                 key="c_fim"
             )
             qtd_c = st.number_input(
-                "Quantidade de Chromebooks*",
+                "Quantidade de Chromebooks (Max. 30)*",
                 min_value=1,
-                max_value=TOTAL_CHR,
+                max_value=MAX_POR_CARRINHO,
                 value=30,
                 key="c_qtd"
             )
@@ -350,6 +354,12 @@ with aba_chr:
         elif ini_c >= fim_c:
             st.warning(
                 "Horario fim deve ser maior que inicio.",
+                icon="⚠️"
+            )
+        elif qtd_c > MAX_POR_CARRINHO:
+            st.warning(
+                f"Limite maximo de {MAX_POR_CARRINHO} "
+                f"Chromebooks por carrinho.",
                 icon="⚠️"
             )
         else:
