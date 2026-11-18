@@ -341,12 +341,20 @@ with aba_chr:
                 step=300,
                 key="c_fim"
             )
-            qtd_c = st.number_input(
-                "Quantidade de Chromebooks (Max. 30)*",
+            cq1, cq2 = st.columns(2)
+            qtd_c = cq1.number_input(
+                "Qtd. Chromebooks (Max. 30)*",
                 min_value=1,
                 max_value=MAX_POR_CARRINHO,
                 value=30,
                 key="c_qtd"
+            )
+            fones_c = cq2.number_input(
+                "🎧 Fones de Ouvido (0 = nenhum)",
+                min_value=0,
+                max_value=MAX_POR_CARRINHO,
+                value=0,
+                key="c_fones"
             )
             obs_c = st.text_input(
                 "Observacoes / Solicitacoes especiais",
@@ -410,10 +418,13 @@ with aba_chr:
         else:
             ts = agora_val.strftime("%Y%m%d%H%M%S")
             id_res = f"CHR-{ts}"
-            obs_txt = (
-                f"[CHROMEBOOK] {obs_c}"
-                if obs_c else "[CHROMEBOOK]"
+            info_fones = (
+                f"Fones: {int(fones_c)} un."
+                if fones_c > 0 else "Sem fones"
             )
+            obs_txt = f"[CHROMEBOOK] {info_fones}"
+            if obs_c.strip():
+                obs_txt = f"{obs_txt} | {obs_c.strip()}"
             if cp_clean:
                 obs_txt = f"{obs_txt} | Copia: {cp_clean}"
             dados = {
@@ -437,8 +448,12 @@ with aba_chr:
             else:
                 with st.spinner("Registrando reserva..."):
                     if salvar_reserva(dados):
+                        extra_fone = (
+                            f" + {int(fones_c)} fones de ouvido"
+                            if fones_c > 0 else ""
+                        )
                         msg_ok = (
-                            f"Reserva de {qtd_c} Chromebooks "
+                            f"Reserva de {qtd_c} Chromebooks{extra_fone} "
                             f"({id_res}) confirmada para "
                             f"{d_clean}, das {i_str} as {f_str} "
                             f"({unid_c})!"
